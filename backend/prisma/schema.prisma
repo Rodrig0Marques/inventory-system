@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+enum AssetStatus {
+  AVAILABLE
+  IN_USE
+  RESERVED
+  MAINTENANCE
+  DAMAGED
+  LOST
+  LOANED
+  DISPOSED
+  SOLD
+  INACTIVE
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  DATE
+  SELECT
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole @default(VIEWER)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  audits    AuditLog[]
+}
+
+model Pool {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  folders     Folder[]
+  assets      Asset[]
+}
+
+model Folder {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  poolId      String
+  parentId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  pool        Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  parent      Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Folder[] @relation("FolderTree")
+  assets      Asset[]
+
+  @@unique([poolId, parentId, name])
+}
+
+model Category {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  assetTypes  AssetType[]
+  customFields CustomField[]
+  assets      Asset[]
+}
+
+model AssetType {
+  id         String    @id @default(cuid())
+  name       String
+  categoryId String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  assets     Asset[]
+
+  @@unique([categoryId, name])
+}
+
+model CustomField {
+  id         String          @id @default(cuid())
+  categoryId String
+  name       String
+  key        String
+  type       CustomFieldType
+  required   Boolean         @default(false)
+  options    Json?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  category   Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  values     AssetCustomValue[]
+
+  @@unique([categoryId, key])
+}
+
+model Asset {
+  id              String      @id @default(cuid())
+  patrimonyNumber String
+  name            String
+  description     String?
+  serialNumber    String?
+  manufacturer    String?
+  model           String?
+  purchasePrice   Decimal?    @db.Decimal(14, 2)
+  purchaseDate    DateTime?
+  status          AssetStatus @default(AVAILABLE)
+  location        String?
+  responsible     String?
+  poolId          String
+  folderId        String?
+  categoryId      String
+  assetTypeId     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  pool            Pool        @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  folder          Folder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  category        Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  assetType       AssetType?  @relation(fields: [assetTypeId], references: [id], onDelete: SetNull)
+  customValues    AssetCustomValue[]
+  movements       AssetMovement[]
+
+  @@unique([poolId, patrimonyNumber])
+  @@index([name])
+  @@index([serialNumber])
+}
+
+model AssetCustomValue {
+  id            String      @id @default(cuid())
+  assetId       String
+  customFieldId String
+  value         Json
+  asset         Asset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  customField   CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, customFieldId])
+}
+
+model AssetMovement {
+  id              String   @id @default(cuid())
+  assetId         String
+  fromPoolId      String?
+  toPoolId        String?
+  fromFolderId    String?
+  toFolderId      String?
+  fromLocation    String?
+  toLocation      String?
+  fromResponsible String?
+  toResponsible   String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  asset           Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model ImportJob {
+  id          String   @id @default(cuid())
+  fileName    String
+  fileType    String
+  totalRows   Int      @default(0)
+  successRows Int      @default(0)
+  errorRows   Int      @default(0)
+  errors      Json?
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  oldValue   Json?
+  newValue   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}

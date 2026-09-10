@@ -1,0 +1,16 @@
+{
+  "name": "inventory-system",
+  "version": "0.5.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace backend && npm run build --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "prisma:generate": "npm run prisma:generate --workspace backend",
+    "seed": "npm run seed --workspace backend"
+  }
+}
