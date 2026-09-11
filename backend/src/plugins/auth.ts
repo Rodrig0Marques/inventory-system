@@ -1,4 +1,5 @@
 import fp from 'fastify-plugin';
+import { jwtSecret } from '../utils/secret.js';
 import jwt from '@fastify/jwt';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { UserRole } from '@prisma/client';
@@ -9,6 +10,7 @@ type AuthUser = {
   email: string;
   name: string;
   role: UserRole;
+  tokenVersion?: number;
 };
 
 declare module '@fastify/jwt' {
@@ -19,6 +21,7 @@ declare module '@fastify/jwt' {
 }
 
 declare module 'fastify' {
+  interface FastifyRequest { poolIds: string[] | null; }
   interface FastifyInstance {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     authorize: (roles: UserRole[]) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -26,7 +29,9 @@ declare module 'fastify' {
 }
 
 export default fp(async (app) => {
-  await app.register(jwt, { secret: process.env.JWT_SECRET || 'change-me-in-production' });
+  await app.register(jwt, { secret: jwtSecret(process.env.JWT_SECRET) });
+
+  app.decorateRequest('poolIds', null);
 
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -34,7 +39,7 @@ export default fp(async (app) => {
 
       const databaseUser = await prisma.user.findUnique({
         where: { id: request.user.sub },
-        select: { active: true, role: true },
+        select: { active: true, role: true, tokenVersion: true, poolAccess: { where: { pool: { active: true } }, select: { poolId: true } } },
       });
 
       if (!databaseUser?.active) {
@@ -43,10 +48,11 @@ export default fp(async (app) => {
       }
 
       // Se o perfil foi alterado, força um novo login para renovar o JWT.
-      if (databaseUser.role !== request.user.role) {
+      if (databaseUser.role !== request.user.role || databaseUser.tokenVersion !== (request.user.tokenVersion ?? 0)) {
         reply.status(401).send({ message: 'Seu perfil de acesso foi alterado. Entre novamente no sistema.' });
         return;
       }
+      request.poolIds = databaseUser.role === UserRole.ADMIN ? null : databaseUser.poolAccess.map(p => p.poolId);
     } catch {
       if (!reply.sent) {
         reply.status(401).send({ message: 'Não autorizado.' });

@@ -12,6 +12,7 @@ type NavItem = { href: string; label: string; icon: IconName; roles?: UserRole[]
 const links: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: 'dashboard' },
   { href: '/assets', label: 'Ativos', icon: 'assets' },
+  { href: '/stock', label: 'Estoque e componentes', icon: 'assets' },
   { href: '/pools', label: 'Pools', icon: 'pools' },
   { href: '/structure', label: 'Estrutura', icon: 'structure' },
   { href: '/imports', label: 'Importações', icon: 'imports' },
@@ -93,7 +94,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <nav className="sidebar-nav">
           <div className="nav-label">Menu</div>
           {visibleLinks.map(item => (
-            <Link key={item.href} href={item.href} className={pathname === item.href ? 'active' : ''}>
+            <Link key={item.href} href={item.href} className={(pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'))) ? 'active' : ''}>
               <NavIcon name={item.icon} />
               <span>{item.label}</span>
             </Link>

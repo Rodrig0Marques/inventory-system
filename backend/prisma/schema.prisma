@@ -44,6 +44,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   audits    AuditLog[]
+  poolAccess UserPool[]
+  tokenVersion Int @default(0)
 }
 
 model Pool {
@@ -53,6 +55,8 @@ model Pool {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  members     UserPool[]
+  profiles    ItemProfile[]
   folders     Folder[]
   assets      Asset[]
 }
@@ -79,6 +83,10 @@ model Category {
   description String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  parentId    String?
+  parent      Category? @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children    Category[] @relation("CategoryTree")
+  profiles    ItemProfile[]
   assetTypes  AssetType[]
   customFields CustomField[]
   assets      Asset[]
@@ -137,6 +145,7 @@ model Asset {
   assetType       AssetType?  @relation(fields: [assetTypeId], references: [id], onDelete: SetNull)
   customValues    AssetCustomValue[]
   movements       AssetMovement[]
+  components      AssetComponent[]
 
   @@unique([poolId, patrimonyNumber])
   @@index([name])
@@ -171,6 +180,8 @@ model AssetMovement {
 }
 
 model ImportJob {
+  userId      String?
+  poolIds     String[] @default([])
   id          String   @id @default(cuid())
   fileName    String
   fileType    String
@@ -192,4 +203,90 @@ model AuditLog {
   ip         String?
   createdAt  DateTime @default(now())
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// Pool membership is explicit. Non-administrators without membership see no assets.
+model UserPool {
+  userId String
+  poolId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pool Pool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  @@id([userId, poolId])
+  @@index([poolId])
+}
+
+enum ComponentOrigin {
+  FROM_STOCK
+  REGISTER_INSTALLED
+}
+
+enum StockMovementType {
+  RECEIPT
+  WITHDRAWAL
+  INSTALL_FROM_STOCK
+  REGISTER_INSTALLED
+  RETURN_TO_STOCK
+  RETIRE_INSTALLED
+}
+
+// A reusable technical profile, not a physical unit. It is scoped to a pool.
+model ItemProfile {
+  id String @id @default(cuid())
+  poolId String
+  categoryId String
+  name String
+  description String?
+  manufacturer String?
+  model String?
+  specifications String?
+  availableQty Int @default(0)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  pool Pool @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  components AssetComponent[]
+  movements StockMovement[]
+  @@unique([poolId, name])
+  @@index([categoryId, poolId])
+}
+
+model AssetComponent {
+  id String @id @default(cuid())
+  assetId String
+  profileId String
+  quantity Int
+  origin ComponentOrigin
+  installedAt DateTime @default(now())
+  removedAt DateTime?
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  profile ItemProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  @@index([profileId, removedAt])
+  @@index([assetId, removedAt])
+}
+
+// Append-only ledger. Asset/user IDs are historical references, deliberately not cascaded.
+model StockMovement {
+  id String @id @default(cuid())
+  profileId String
+  assetId String?
+  userId String
+  operationId String
+  type StockMovementType
+  quantity Int
+  availableAfter Int
+  notes String?
+  createdAt DateTime @default(now())
+  profile ItemProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  @@index([profileId, createdAt])
+}
+
+// Makes retries of a stock write safe: the same requestId never creates a second unit.
+model StockOperation {
+  id String @id
+  userId String
+  kind String
+  inputHash String
+  result Json
+  createdAt DateTime @default(now())
 }

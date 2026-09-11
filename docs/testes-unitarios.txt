@@ -1,0 +1,208 @@
+TAP version 13
+# Subtest: TXT: registering an installed 8gb 2666Ghz unit preserves the available quantity
+ok 1 - TXT: registering an installed 8gb 2666Ghz unit preserves the available quantity
+  ---
+  duration_ms: 1.880324
+  type: 'test'
+  ...
+# Subtest: installing from stock moves a unit but never increases the total
+ok 2 - installing from stock moves a unit but never increases the total
+  ---
+  duration_ms: 0.118346
+  type: 'test'
+  ...
+# Subtest: external installed units can be registered even when no units are available
+ok 3 - external installed units can be registered even when no units are available
+  ---
+  duration_ms: 0.149713
+  type: 'test'
+  ...
+# Subtest: stock cannot become negative
+ok 4 - stock cannot become negative
+  ---
+  duration_ms: 0.216202
+  type: 'test'
+  ...
+# Subtest: returning a component preserves total
+ok 5 - returning a component preserves total
+  ---
+  duration_ms: 0.198436
+  type: 'test'
+  ...
+# Subtest: retiring a component reduces total but does not add available units
+ok 6 - retiring a component reduces total but does not add available units
+  ---
+  duration_ms: 0.096183
+  type: 'test'
+  ...
+# Subtest: removing more than installed is rejected
+ok 7 - removing more than installed is rejected
+  ---
+  duration_ms: 0.135983
+  type: 'test'
+  ...
+# Subtest: quantity is multiplied by the number of equipment items
+ok 8 - quantity is multiplied by the number of equipment items
+  ---
+  duration_ms: 0.110314
+  type: 'test'
+  ...
+# Subtest: invalid component quantity 0 is rejected
+ok 9 - invalid component quantity 0 is rejected
+  ---
+  duration_ms: 0.318555
+  type: 'test'
+  ...
+# Subtest: invalid component quantity -1 is rejected
+ok 10 - invalid component quantity -1 is rejected
+  ---
+  duration_ms: 0.26176
+  type: 'test'
+  ...
+# Subtest: invalid component quantity 1.5 is rejected
+ok 11 - invalid component quantity 1.5 is rejected
+  ---
+  duration_ms: 0.143775
+  type: 'test'
+  ...
+# Subtest: invalid component quantity NaN is rejected
+ok 12 - invalid component quantity NaN is rejected
+  ---
+  duration_ms: 0.055443
+  type: 'test'
+  ...
+# Subtest: invalid component quantity Infinity is rejected
+ok 13 - invalid component quantity Infinity is rejected
+  ---
+  duration_ms: 0.040942
+  type: 'test'
+  ...
+# Subtest: invalid component quantity 10001 is rejected
+ok 14 - invalid component quantity 10001 is rejected
+  ---
+  duration_ms: 0.037516
+  type: 'test'
+  ...
+# Subtest: invalid batch size 0 is rejected
+ok 15 - invalid batch size 0 is rejected
+  ---
+  duration_ms: 0.075062
+  type: 'test'
+  ...
+# Subtest: invalid batch size -1 is rejected
+ok 16 - invalid batch size -1 is rejected
+  ---
+  duration_ms: 0.041252
+  type: 'test'
+  ...
+# Subtest: invalid batch size 1.5 is rejected
+ok 17 - invalid batch size 1.5 is rejected
+  ---
+  duration_ms: 0.034812
+  type: 'test'
+  ...
+# Subtest: invalid batch size 201 is rejected
+ok 18 - invalid batch size 201 is rejected
+  ---
+  duration_ms: 0.034742
+  type: 'test'
+  ...
+# Subtest: totals reject negative and unsafe numbers
+ok 19 - totals reject negative and unsafe numbers
+  ---
+  duration_ms: 0.099469
+  type: 'test'
+  ...
+# Subtest: arithmetic invariants across 1000 combinations
+ok 20 - arithmetic invariants across 1000 combinations
+  ---
+  duration_ms: 1.410323
+  type: 'test'
+  ...
+# Subtest: VIEWER only sees assigned pools
+ok 21 - VIEWER only sees assigned pools
+  ---
+  duration_ms: 0.203404
+  type: 'test'
+  ...
+# Subtest: VIEWER may query its own pool
+ok 22 - VIEWER may query its own pool
+  ---
+  duration_ms: 0.079559
+  type: 'test'
+  ...
+# Subtest: VIEWER cannot request TI when assigned to RH
+ok 23 - VIEWER cannot request TI when assigned to RH
+  ---
+  duration_ms: 0.221991
+  type: 'test'
+  ...
+# Subtest: VIEWER without membership sees nothing
+ok 24 - VIEWER without membership sees nothing
+  ---
+  duration_ms: 0.081201
+  type: 'test'
+  ...
+# Subtest: MANAGER only sees assigned pools
+ok 25 - MANAGER only sees assigned pools
+  ---
+  duration_ms: 0.044397
+  type: 'test'
+  ...
+# Subtest: MANAGER may query its own pool
+ok 26 - MANAGER may query its own pool
+  ---
+  duration_ms: 0.033309
+  type: 'test'
+  ...
+# Subtest: MANAGER cannot request TI when assigned to RH
+ok 27 - MANAGER cannot request TI when assigned to RH
+  ---
+  duration_ms: 0.042464
+  type: 'test'
+  ...
+# Subtest: MANAGER without membership sees nothing
+ok 28 - MANAGER without membership sees nothing
+  ---
+  duration_ms: 0.035983
+  type: 'test'
+  ...
+# Subtest: missing membership never grants global access
+ok 29 - missing membership never grants global access
+  ---
+  duration_ms: 0.068162
+  type: 'test'
+  ...
+# Subtest: ADMIN has explicit global access
+ok 30 - ADMIN has explicit global access
+  ---
+  duration_ms: 0.123234
+  type: 'test'
+  ...
+# Subtest: ADMIN can select a particular pool
+ok 31 - ADMIN can select a particular pool
+  ---
+  duration_ms: 0.071217
+  type: 'test'
+  ...
+# Subtest: known placeholder and missing JWT secrets are rejected
+ok 32 - known placeholder and missing JWT secrets are rejected
+  ---
+  duration_ms: 0.305616
+  type: 'test'
+  ...
+# Subtest: a sufficiently long non-placeholder JWT key is accepted
+ok 33 - a sufficiently long non-placeholder JWT key is accepted
+  ---
+  duration_ms: 0.111437
+  type: 'test'
+  ...
+1..33
+# tests 33
+# suites 0
+# pass 33
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 74.902833

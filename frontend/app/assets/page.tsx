@@ -164,7 +164,7 @@ export default function AssetsPage() {
           <tbody>
             {items.map(item => <tr key={item.id}>
               <td><span className="patrimony-code">{item.patrimonyNumber}</span></td>
-              <td><div className="entity-title">{item.name}</div></td>
+              <td><Link className="entity-title" href={`/assets/${item.id}`}>{item.name}</Link><div className="entity-subtitle">Ver detalhes e componentes</div></td>
               <td>{item.manufacturer || '-'}</td>
               <td>{item.model || '-'}</td>
               <td>{formatPrice(item.purchasePrice)}</td>

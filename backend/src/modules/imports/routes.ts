@@ -1,8 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Prisma, UserRole } from '@prisma/client';
 import { XMLParser } from 'fast-xml-parser';
 import * as XLSX from 'xlsx';
 import { prisma } from '../../plugins/prisma.js';
+import { poolWhere, writablePool, fail } from '../../utils/access.js';
+import { serial } from '../../utils/transaction.js';
+import { audit } from '../../utils/audit.js';
 
 type RawRow = Record<string, unknown>;
 
@@ -112,6 +115,7 @@ async function readRows(filename: string, buffer: Buffer) {
     if (!sheet) throw new Error('A planilha não possui nenhuma aba para leitura.');
     rows = XLSX.utils.sheet_to_json<RawRow>(sheet, { defval: '' });
   } else if (extension === 'xml') {
+    if (/<!DOCTYPE|<!ENTITY/i.test(buffer.toString('utf8'))) fail(400, 'XML com declarações de entidades não é aceito.');
     const parsed = new XMLParser({ ignoreAttributes: false }).parse(buffer.toString('utf8'));
     rows = rowsFromXml(parsed);
   } else {
@@ -120,6 +124,7 @@ async function readRows(filename: string, buffer: Buffer) {
     throw error;
   }
 
+  if (rows.length > 5000) fail(400, 'O limite é de 5.000 linhas por arquivo. Divida a carga.');
   return { extension, rows };
 }
 
@@ -134,9 +139,9 @@ function buildReferenceMap<T extends { id: string; name: string }>(items: T[]) {
   return map;
 }
 
-async function validateRows(rows: RawRow[]): Promise<ResolvedRow[]> {
+async function validateRows(rows: RawRow[], request: FastifyRequest): Promise<ResolvedRow[]> {
   const [pools, categories] = await Promise.all([
-    prisma.pool.findMany({ where: { active: true }, select: { id: true, name: true } }),
+    prisma.pool.findMany({ where: { ...poolWhere(request), active: true }, select: { id: true, name: true } }),
     prisma.category.findMany({ select: { id: true, name: true } }),
   ]);
 
@@ -241,7 +246,7 @@ function createTemplate(pools: Array<{ name: string }>, categories: Array<{ name
   const example = [
     ['TI-0001', 'Notebook corporativo', examplePool, exampleCategory, 'Equipamento de uso interno', 'Dell', 'Latitude 5450', 6500, 'Matriz', 'João da Silva'],
   ];
-  const assetsSheet = XLSX.utils.aoa_to_sheet([...headers, ...example]);
+  const assetsSheet = XLSX.utils.aoa_to_sheet(headers);
   assetsSheet['!cols'] = [
     { wch: 16 }, { wch: 28 }, { wch: 18 }, { wch: 20 }, { wch: 34 },
     { wch: 20 }, { wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 24 },
@@ -262,11 +267,14 @@ function createTemplate(pools: Array<{ name: string }>, categories: Array<{ name
 export async function importRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
 
-  app.get('/', async () => prisma.importJob.findMany({ orderBy: { createdAt: 'desc' }, take: 50 }));
+  app.get('/', async (request) => {
+    const jobs = await prisma.importJob.findMany({ where: request.poolIds === null ? {} : { userId: request.user.sub }, orderBy: { createdAt: 'desc' }, take: 50 });
+    return request.poolIds === null ? jobs : jobs.filter(job => job.poolIds.every(id => request.poolIds!.includes(id)));
+  });
 
-  app.get('/template', async (_request, reply) => {
+  app.get('/template', async (request, reply) => {
     const [pools, categories] = await Promise.all([
-      prisma.pool.findMany({ where: { active: true }, orderBy: { name: 'asc' }, select: { name: true } }),
+      prisma.pool.findMany({ where: { ...poolWhere(request), active: true }, orderBy: { name: 'asc' }, select: { name: true } }),
       prisma.category.findMany({ orderBy: { name: 'asc' }, select: { name: true } }),
     ]);
     const file = createTemplate(pools, categories);
@@ -284,7 +292,7 @@ export async function importRoutes(app: FastifyInstance) {
     const { rows } = await readRows(data.filename, buffer);
     if (!rows.length) return reply.status(400).send({ message: 'Nenhum registro foi encontrado no arquivo.' });
 
-    const validated = await validateRows(rows);
+    const validated = await validateRows(rows, request);
     return previewPayload(data.filename, validated);
   });
 
@@ -296,7 +304,7 @@ export async function importRoutes(app: FastifyInstance) {
     const { extension, rows } = await readRows(data.filename, buffer);
     if (!rows.length) return reply.status(400).send({ message: 'Nenhum registro foi encontrado no arquivo.' });
 
-    const validated = await validateRows(rows);
+    const validated = await validateRows(rows, request);
     let successRows = 0;
     const errors: Array<{ row: number; patrimonyNumber: string | null; message: string }> = validated
       .filter((row) => row.errors.length > 0)
@@ -304,43 +312,34 @@ export async function importRoutes(app: FastifyInstance) {
 
     for (const row of validated.filter((item) => item.errors.length === 0 && item.poolId && item.categoryId)) {
       try {
-        await prisma.asset.upsert({
-          where: { poolId_patrimonyNumber: { poolId: row.poolId!, patrimonyNumber: row.patrimonyNumber } },
-          update: {
-            name: row.name,
-            description: row.description,
-            manufacturer: row.manufacturer,
-            model: row.model,
-            purchasePrice: row.purchasePrice == null ? null : new Prisma.Decimal(row.purchasePrice),
-            location: row.location,
-            responsible: row.responsible,
-            categoryId: row.categoryId!,
-          },
-          create: {
-            patrimonyNumber: row.patrimonyNumber,
-            name: row.name,
-            description: row.description,
-            manufacturer: row.manufacturer,
-            model: row.model,
-            purchasePrice: row.purchasePrice == null ? null : new Prisma.Decimal(row.purchasePrice),
-            location: row.location,
-            responsible: row.responsible,
-            poolId: row.poolId!,
-            categoryId: row.categoryId!,
-          },
+        await serial(async tx => {
+          await writablePool(request, row.poolId!, tx);
+          if (!await tx.category.findUnique({ where: { id: row.categoryId! } })) fail(400, 'Categoria removida após a análise.');
+          const current = await tx.asset.findUnique({ where: { poolId_patrimonyNumber: { poolId: row.poolId!, patrimonyNumber: row.patrimonyNumber } } });
+          const data = {
+            name: row.name, description: row.description, manufacturer: row.manufacturer, model: row.model,
+            ...(row.priceWasProvided ? { purchasePrice: new Prisma.Decimal(row.purchasePrice!) } : {}),
+            location: row.location, responsible: row.responsible, categoryId: row.categoryId!,
+          };
+          if (current && current.categoryId !== row.categoryId) await tx.assetCustomValue.deleteMany({ where: { assetId: current.id } });
+          const asset = current ? await tx.asset.update({ where: { id: current.id }, data: { ...data, ...(current.categoryId !== row.categoryId ? { assetTypeId: null } : {}) } }) :
+            await tx.asset.create({ data: { ...data, poolId: row.poolId!, patrimonyNumber: row.patrimonyNumber } });
+          await audit(request, current ? 'IMPORT_UPDATE' : 'IMPORT_CREATE', 'Asset', asset.id, current ?? undefined, asset, tx);
         });
         successRows++;
       } catch (error) {
         errors.push({
           row: row.row,
           patrimonyNumber: row.patrimonyNumber,
-          message: error instanceof Error ? error.message : 'Erro desconhecido ao gravar o ativo.',
+          message: error instanceof Error && 'statusCode' in error ? error.message : 'Falha ao gravar a linha. Verifique duplicidade ou conflito de dados.',
         });
       }
     }
 
     const job = await prisma.importJob.create({
       data: {
+        userId: request.user.sub,
+        poolIds: [...new Set(validated.flatMap(row => row.poolId ? [row.poolId] : []))],
         fileName: data.filename,
         fileType: extension,
         totalRows: rows.length,

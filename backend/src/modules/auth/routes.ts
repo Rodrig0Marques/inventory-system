@@ -26,7 +26,7 @@ export async function authRoutes(app: FastifyInstance) {
     };
 
     const token = app.jwt.sign(
-      { sub: user.id, email: user.email, name: user.name, role: user.role },
+      { sub: user.id, email: user.email, name: user.name, role: user.role, tokenVersion: user.tokenVersion },
       { expiresIn: '8h' },
     );
 
@@ -43,6 +43,6 @@ export async function authRoutes(app: FastifyInstance) {
       return reply.status(401).send({ message: 'Usuário inativo ou não encontrado.' });
     }
 
-    return user;
+    return { ...user, poolIds: request.poolIds };
   });
 }

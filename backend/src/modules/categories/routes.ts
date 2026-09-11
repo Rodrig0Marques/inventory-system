@@ -3,25 +3,28 @@ import { CustomFieldType, UserRole } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../plugins/prisma.js';
 import { audit } from '../../utils/audit.js';
+import { poolScope } from '../../utils/access.js';
 
 export async function categoryRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
 
-  app.get('/', async () => prisma.category.findMany({
+  app.get('/', async (request) => prisma.category.findMany({
     include: {
       assetTypes: true,
       customFields: true,
-      _count: { select: { assets: true } },
+      _count: { select: { assets: { where: poolScope(request) } } },
     },
     orderBy: { name: 'asc' },
   }));
 
-  app.post('/', { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) }, async (request, reply) => {
+  app.post('/', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
     const data = z.object({
       name: z.string().trim().min(1),
       description: z.string().trim().optional().nullable(),
+      parentId: z.string().min(1).optional().nullable(),
     }).parse(request.body);
 
+    if (data.parentId && !await prisma.category.findUnique({ where: { id: data.parentId } })) return reply.status(400).send({ message: 'Categoria pai não encontrada.' });
     const existing = await prisma.category.findUnique({ where: { name: data.name } });
     if (existing) return reply.status(409).send({ message: 'Já existe uma categoria com esse nome' });
 
@@ -30,11 +33,11 @@ export async function categoryRoutes(app: FastifyInstance) {
     return reply.status(201).send(result);
   });
 
-  app.delete('/:id', { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) }, async (request, reply) => {
+  app.delete('/:id', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const category = await prisma.category.findUnique({
       where: { id },
-      include: { _count: { select: { assets: true } } },
+      include: { _count: { select: { assets: true, children: true, profiles: true } } },
     });
 
     if (!category) return reply.status(404).send({ message: 'Categoria não encontrada' });
@@ -44,12 +47,13 @@ export async function categoryRoutes(app: FastifyInstance) {
       });
     }
 
+    if (category._count.children || category._count.profiles) return reply.status(409).send({ message: 'A categoria possui subcategorias ou perfis de estoque. O histórico não pode ser apagado.' });
     await prisma.category.delete({ where: { id } });
     await audit(request, 'DELETE', 'Category', id, category, undefined);
     return reply.send({ message: 'Categoria excluída com sucesso' });
   });
 
-  app.post('/:id/types', { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) }, async (request, reply) => {
+  app.post('/:id/types', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const { name } = z.object({ name: z.string().trim().min(1) }).parse(request.body);
     const result = await prisma.assetType.create({ data: { categoryId: id, name } });
@@ -57,7 +61,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     return reply.status(201).send(result);
   });
 
-  app.post('/:id/fields', { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) }, async (request, reply) => {
+  app.post('/:id/fields', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const data = z.object({
       name: z.string().trim().min(1),

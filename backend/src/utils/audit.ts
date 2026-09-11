@@ -7,9 +7,9 @@ function toJson(value: unknown): Prisma.InputJsonValue | undefined {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-export async function audit(request: FastifyRequest, action: string, entity: string, entityId?: string, oldValue?: unknown, newValue?: unknown) {
+export async function audit(request: FastifyRequest, action: string, entity: string, entityId?: string, oldValue?: unknown, newValue?: unknown, db: Prisma.TransactionClient = prisma) {
   const user = request.user as { sub?: string } | undefined;
-  await prisma.auditLog.create({
+  await db.auditLog.create({
     data: {
       userId: user?.sub,
       action,

@@ -13,9 +13,11 @@ type UserRecord = {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+  poolAccess: Array<{ poolId: string; pool: { name: string; active: boolean } }>;
 };
 
 type UserForm = {
+  poolIds: string[];
   name: string;
   email: string;
   password: string;
@@ -24,6 +26,7 @@ type UserForm = {
 };
 
 const emptyForm: UserForm = {
+  poolIds: [],
   name: '',
   email: '',
   password: '',
@@ -33,6 +36,7 @@ const emptyForm: UserForm = {
 
 export default function UsersPage() {
   const router = useRouter();
+  const [pools, setPools] = useState<Array<{ id: string; name: string; active: boolean }>>([]);
   const [items, setItems] = useState<UserRecord[]>([]);
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -43,7 +47,10 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const currentUser = getSessionUser();
 
-  const load = () => api<UserRecord[]>('/users').then(setItems);
+  const load = async () => {
+    const [users, poolData] = await Promise.all([api<UserRecord[]>('/users'), api<Array<{ id: string; name: string; active: boolean }>>('/pools')]);
+    setItems(users); setPools(poolData);
+  };
 
   useEffect(() => {
     const session = getSessionUser();
@@ -61,7 +68,7 @@ export default function UsersPage() {
 
   function startEdit(user: UserRecord) {
     setEditingId(user.id);
-    setForm({ name: user.name, email: user.email, password: '', role: user.role, active: user.active });
+    setForm({ name: user.name, email: user.email, password: '', role: user.role, active: user.active, poolIds: user.poolAccess.map(p => p.poolId) });
     setError('');
     setSuccess('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -82,6 +89,7 @@ export default function UsersPage() {
             email: form.email,
             role: form.role,
             active: form.active,
+            poolIds: form.poolIds,
           }),
         });
         setSuccess('Usuário atualizado com sucesso.');
@@ -184,6 +192,12 @@ export default function UsersPage() {
           <div className="form-field"><label>E-mail *</label><input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="usuario@empresa.com.br" required /></div>
           {!editingId && <div className="form-field"><label>Senha inicial *</label><input type="password" minLength={8} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Mínimo de 8 caracteres" required /><div className="field-help">O usuário poderá entrar imediatamente após a criação.</div></div>}
           <div className="form-field"><label>Perfil de acesso *</label><select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as UserRole })}><option value="VIEWER">Visualizador</option><option value="MANAGER">Gestor</option><option value="ADMIN">Administrador</option></select></div>
+          <fieldset className="pool-permissions"><legend>Pools permitidos</legend>
+            {form.role === 'ADMIN' ? <p>Administradores acessam todos os Pools. Para restringir por setor, use Gestor ou Visualizador.</p> : <>
+              <p>Sem seleção, o usuário não enxerga nenhum ativo. Novos Pools não são liberados automaticamente.</p>
+              {pools.map(pool => <label className="permission-check" key={pool.id}><input type="checkbox" checked={form.poolIds.includes(pool.id)} onChange={e => setForm({ ...form, poolIds: e.target.checked ? [...form.poolIds, pool.id] : form.poolIds.filter(id => id !== pool.id) })} /><span>{pool.name}{pool.active ? '' : ' (inativo)'}</span></label>)}
+            </>}
+          </fieldset>
           {editingId && <label className="toggle-row"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /><span><strong>Usuário ativo</strong><small>Usuários inativos não conseguem entrar no sistema.</small></span></label>}
 
           <div className="form-actions-row">
@@ -198,8 +212,8 @@ export default function UsersPage() {
         <h2>Níveis de acesso</h2>
         <div className="permission-list">
           <div><span className="role-badge role-admin">Administrador</span><p>Acesso total, incluindo gerenciamento de usuários.</p></div>
-          <div><span className="role-badge role-manager">Gestor</span><p>Pode criar, alterar e excluir ativos, pools, categorias, pastas e importações.</p></div>
-          <div><span className="role-badge role-viewer">Visualizador</span><p>Pode consultar o inventário, mas não pode fazer alterações.</p></div>
+          <div><span className="role-badge role-manager">Gestor</span><p>Gerencia ativos, pastas, estoque e importações somente nos Pools liberados. Pools e categorias globais são administrados pelo ADMIN.</p></div>
+          <div><span className="role-badge role-viewer">Visualizador</span><p>Consulta apenas os Pools liberados, sem fazer alterações.</p></div>
         </div>
       </div>
     </section>
@@ -210,13 +224,14 @@ export default function UsersPage() {
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Usuário</th><th>Perfil</th><th>Status</th><th>Criado em</th><th className="align-right">Ações</th></tr></thead>
+          <thead><tr><th>Usuário</th><th>Perfil</th><th>Pools permitidos</th><th>Status</th><th>Criado em</th><th className="align-right">Ações</th></tr></thead>
           <tbody>
             {items.map(user => {
               const isSelf = currentUser?.id === user.id;
               return <tr key={user.id}>
                 <td><div className="user-cell"><div className="table-avatar">{user.name.slice(0, 1).toUpperCase()}</div><div><div className="entity-title">{user.name}{isSelf ? ' (você)' : ''}</div><div className="entity-subtitle">{user.email}</div></div></div></td>
                 <td><span className={`role-badge role-${user.role.toLowerCase()}`}>{roleLabel(user.role)}</span></td>
+                <td>{user.role === 'ADMIN' ? 'Todos os Pools' : user.poolAccess.map(p => p.pool.name).join(', ') || 'Nenhum Pool liberado'}</td>
                 <td><span className={`status-badge ${user.active ? 'status-active' : 'status-inactive'}`}><span />{user.active ? 'Ativo' : 'Inativo'}</span></td>
                 <td>{new Date(user.createdAt).toLocaleDateString('pt-BR')}</td>
                 <td className="align-right"><div className="row-actions">
@@ -227,7 +242,7 @@ export default function UsersPage() {
                 </div></td>
               </tr>;
             })}
-            {items.length === 0 && <tr><td colSpan={5}><div className="empty-state">Nenhum usuário cadastrado.</div></td></tr>}
+            {items.length === 0 && <tr><td colSpan={6}><div className="empty-state">Nenhum usuário cadastrado.</div></td></tr>}
           </tbody>
         </table>
       </div>

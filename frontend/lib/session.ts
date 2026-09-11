@@ -6,6 +6,7 @@ export type SessionUser = {
   email: string;
   role: UserRole;
   active: boolean;
+  poolIds?: string[] | null;
 };
 
 const TOKEN_KEY = 'inventory_token';

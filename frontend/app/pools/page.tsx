@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { canManage, getSessionUser } from '../../lib/session';
@@ -9,6 +10,7 @@ type Pool = {
   name: string;
   description?: string | null;
   active: boolean;
+  stock?: { total: number; available: number; installed: number };
   _count: { assets: number; folders: number };
 };
 
@@ -24,7 +26,7 @@ export default function PoolsPage() {
   const load = () => api<Pool[]>('/pools').then(setItems);
 
   useEffect(() => {
-    setCanEdit(canManage(getSessionUser()?.role));
+    setCanEdit(getSessionUser()?.role === 'ADMIN');
     load().catch(() => setError('Não foi possível carregar os pools.'));
   }, []);
 
@@ -47,8 +49,7 @@ export default function PoolsPage() {
   }
 
   async function remove(pool: Pool) {
-    const extra = pool._count.folders > 0 ? `\n\nAs ${pool._count.folders} pasta(s) vazia(s) deste pool também serão removidas.` : '';
-    if (!window.confirm(`Excluir o pool "${pool.name}"?${extra}`)) return;
+    if (!window.confirm(`Excluir o Pool "${pool.name}"? Pools com ativos, pastas ou histórico de estoque não podem ser excluídos.`)) return;
 
     setError('');
     setSuccess('');
@@ -59,6 +60,13 @@ export default function PoolsPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao excluir pool.');
     }
+  }
+
+  async function toggleActive(pool: Pool) {
+    if (!window.confirm(`${pool.active ? 'Inativar' : 'Reativar'} o Pool "${pool.name}"? A inativação suspende o acesso de gestores e visualizadores.`)) return;
+    setError(''); setSuccess('');
+    try { await api(`/pools/${pool.id}`, { method: 'PUT', body: JSON.stringify({ active: !pool.active }) }); setSuccess('Status do Pool atualizado.'); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Falha ao atualizar Pool.'); }
   }
 
   return <>
@@ -72,7 +80,7 @@ export default function PoolsPage() {
     </div>
 
     {(error || success) && <div className={`notice ${error ? 'notice-error' : 'notice-success'}`}>{error || success}</div>}
-    {!canEdit && <div className="notice notice-info">Seu perfil é somente leitura. Você pode consultar os pools, mas não pode criá-los ou excluí-los.</div>}
+    {!canEdit && <div className="notice notice-info">Somente administradores podem criar ou excluir Pools. Você consulta apenas os Pools liberados para a sua conta.</div>}
 
     <div className={canEdit ? 'split-layout' : ''}>
       {canEdit && <section className="card form-card">
@@ -93,15 +101,16 @@ export default function PoolsPage() {
         </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Pool</th><th>Pastas</th><th>Ativos</th>{canEdit && <th className="align-right">Ações</th>}</tr></thead>
+            <thead><tr><th>Pool</th><th>Pastas</th><th>Ativos</th><th>Componentes</th>{canEdit && <th className="align-right">Ações</th>}</tr></thead>
             <tbody>
               {items.map(item => <tr key={item.id}>
-                <td><div className="entity-title">{item.name}</div><div className="entity-subtitle">{item.description || 'Sem descrição'}</div></td>
+                <td><Link className="entity-title" href={`/stock?poolId=${item.id}`}>{item.name}</Link><div className="entity-subtitle">{item.description || 'Sem descrição'}</div></td>
                 <td><span className="soft-badge">{item._count.folders}</span></td>
                 <td><span className="soft-badge">{item._count.assets}</span></td>
-                {canEdit && <td className="align-right"><button type="button" className="icon-danger" onClick={() => remove(item)} title="Excluir pool">Excluir</button></td>}
+                <td>{item.stock?.total || 0} no total<br /><small>{item.stock?.available || 0} disponíveis / {item.stock?.installed || 0} instalados</small></td>
+                {canEdit && <td className="align-right"><button type="button" className="table-action" onClick={() => toggleActive(item)}>{item.active ? 'Inativar' : 'Reativar'}</button><button type="button" className="icon-danger" onClick={() => remove(item)} title="Excluir pool">Excluir</button></td>}
               </tr>)}
-              {items.length === 0 && <tr><td colSpan={canEdit ? 4 : 3}><div className="empty-state">Nenhum pool cadastrado.</div></td></tr>}
+              {items.length === 0 && <tr><td colSpan={canEdit ? 5 : 4}><div className="empty-state">Nenhum pool cadastrado.</div></td></tr>}
             </tbody>
           </table>
         </div>

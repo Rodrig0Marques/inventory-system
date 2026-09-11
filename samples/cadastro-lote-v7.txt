@@ -1,0 +1,4 @@
+patrimonio;nome;pasta
+CAD-001;Computador 01;Estacoes/PC-01
+CAD-002;Computador 02;Estacoes/PC-02
+CAD-003;Computador 03;Estacoes/PC-03

@@ -8,3 +8,10 @@ postgres_data/
 *.tsbuildinfo
 .env.local
 .env.production
+
+# Local secrets and database backups
+.env.*
+!.env.example
+backups/
+*.dump
+*.backup
