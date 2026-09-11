@@ -1,3 +1,4 @@
-patrimonio,nome,descricao,fabricante,modelo,preco,localizacao,responsavel
-PAT-0001,Notebook Dell,Notebook do financeiro,Dell,Latitude 5450,6500.00,Financeiro,Joao da Silva
-PAT-0002,Monitor 24,Monitor da recepcao,LG,24MP400,850.00,Recepcao,Maria Souza
+patrimonio,nome,pool,categoria,descricao,fabricante,modelo,preco,localizacao,responsavel
+TI-0001,Notebook corporativo,TI,Notebook,Equipamento de uso interno,Dell,Latitude 5450,6500.00,Matriz,João da Silva
+TI-0002,Monitor 24 polegadas,TI,Monitor,Monitor para estação de trabalho,LG,24MP400,899.90,Matriz,Maria Souza
+ADM-0001,Cadeira ergonômica,Administrativo,Mobiliário,Cadeira para escritório,Flexform,Uni,1450.00,Matriz,Carlos Lima

@@ -1,21 +1,20 @@
-# Inventory System v5
+# Inventory System v6
 
 Sistema interno de gestão patrimonial para ativos de TI, RH, Administrativo e qualquer outro domínio da empresa.
 
-## Novidades da v5
+## Novidades da v6
 
-- Gerenciamento completo de usuários pela interface.
-- Perfis de acesso `ADMIN`, `MANAGER` e `VIEWER`.
-- Permissões validadas no backend e refletidas no frontend.
-- Criação, edição, ativação, desativação e exclusão de usuários.
-- Redefinição de senha por administrador.
-- Proteção contra exclusão/desativação do próprio administrador.
-- Proteção para manter pelo menos um administrador ativo.
-- Usuários desativados perdem o acesso imediatamente.
-- Mudança de perfil força novo login para renovar as permissões do token.
-- Menu de Usuários visível somente para administradores.
-- Interface revisada com acentuação correta em português.
-- Usuários `VIEWER` recebem uma interface somente leitura.
+- Pool e Categoria agora são informados em **cada linha** do arquivo de importação.
+- Removidos os seletores únicos de Pool e Categoria da tela de Importações.
+- Nova etapa de **pré-validação** antes de gravar qualquer ativo.
+- Linhas com Pool ou Categoria inexistentes são rejeitadas e não são cadastradas.
+- O sistema não cria Pool ou Categoria automaticamente por causa de erro de digitação.
+- Comparação de Pool/Categoria ignora maiúsculas, minúsculas e acentos (`TI`, `ti` e `Ti` são equivalentes).
+- Preço inválido e campos obrigatórios ausentes são sinalizados antes da importação.
+- Patrimônios duplicados no mesmo Pool dentro do próprio arquivo são rejeitados.
+- A prévia informa se o registro será **Criado** ou **Atualizado**.
+- O botão **Baixar modelo XLSX** gera um arquivo atualizado com abas de referência de Pools e Categorias cadastrados no sistema.
+- Mantidos usuários, permissões e recursos da v5.
 
 ## Perfis de acesso
 
@@ -25,12 +24,13 @@ Sistema interno de gestão patrimonial para ativos de TI, RH, Administrativo e q
 | `MANAGER` | Cria, altera e exclui ativos, pools, categorias, pastas e importações |
 | `VIEWER` | Consulta dashboard, ativos, pools, estrutura e histórico de importações |
 
-As permissões não dependem apenas do frontend. O backend retorna HTTP `403` caso um usuário tente executar uma ação sem permissão.
+As permissões são validadas também no backend. Uma ação não autorizada retorna HTTP `403`.
 
 ## Principais recursos
 
 - Autenticação JWT com validade de 8 horas.
 - Dashboard patrimonial.
+- Gerenciamento de usuários.
 - Criação e exclusão de Pools.
 - Criação e exclusão de Categorias.
 - Criação e exclusão de Pastas e Subpastas.
@@ -38,7 +38,7 @@ As permissões não dependem apenas do frontend. O backend retorna HTTP `403` ca
 - Cadastro e exclusão de ativos.
 - Organização por Pool, Pasta e Categoria.
 - Cadastro simplificado com patrimônio, nome, descrição, fabricante, modelo, preço, localização e responsável.
-- Importação em lote por CSV, XLS, XLSX e XML.
+- Importação em lote por CSV, XLS, XLSX e XML com pré-validação.
 - Histórico de importações.
 - Auditoria de criação, alteração, movimentação e exclusão.
 - Frontend responsivo.
@@ -71,7 +71,7 @@ Copy-Item .env.example .env
 docker compose up -d --build
 ```
 
-Acessos:
+Acessos padrão:
 
 - Frontend: http://localhost:3000
 - API: http://localhost:3333
@@ -85,68 +85,9 @@ E-mail: admin@inventory.local
 Senha:  admin123
 ```
 
-O usuário inicial é criado somente quando a tabela de usuários está vazia. Depois que existem usuários no sistema, o seed não recria contas removidas.
-
 Altere a senha inicial e o `JWT_SECRET` antes de colocar o sistema em produção.
 
-## Gerenciamento de usuários
-
-Entre como administrador e acesse:
-
-```text
-Usuários
-```
-
-É possível:
-
-- criar usuário;
-- alterar nome e e-mail;
-- selecionar perfil;
-- ativar ou desativar acesso;
-- redefinir senha;
-- excluir usuário.
-
-Regras de segurança:
-
-- um administrador não pode excluir a própria conta;
-- um administrador não pode desativar a própria conta;
-- um administrador não pode remover o próprio perfil `ADMIN`;
-- deve existir pelo menos um administrador ativo;
-- usuários inativos são bloqueados pelo backend mesmo que ainda possuam um JWT antigo.
-
-## Estrutura do inventário
-
-```text
-POOL
-  -> PASTA
-      -> SUBPASTA
-          -> ATIVO
-
-CATEGORIA
-  -> classifica o tipo geral do ativo
-```
-
-Exemplo:
-
-```text
-Pool: TI
-Pasta: Hardware / Estoque
-Categoria: Notebook
-Patrimônio: PAT-00125
-Nome: Dell Latitude 5450
-```
-
-## Exclusão segura
-
-- Um Pool com ativos não pode ser excluído.
-- Uma Categoria com ativos não pode ser excluída.
-- Uma Pasta com ativos não pode ser excluída.
-- Uma Pasta com subpastas não pode ser excluída.
-- Um Pool sem ativos pode ser excluído; suas pastas vazias são removidas junto com ele.
-
-As exclusões ficam registradas em `AuditLog`.
-
-## Importação
+## Importação v6
 
 Formatos aceitos:
 
@@ -155,11 +96,13 @@ Formatos aceitos:
 - `.xlsx`
 - `.xml`
 
-Modelo simplificado:
+A primeira aba da planilha deve conter estas colunas:
 
 ```text
 patrimonio
 nome
+pool
+categoria
 descricao
 fabricante
 modelo
@@ -168,11 +111,56 @@ localizacao
 responsavel
 ```
 
-O arquivo `modelo_importacao_ativos.xlsx` está na raiz e também fica disponível na tela de Importações.
+Campos obrigatórios:
 
-O Pool e a Categoria do lote são selecionados na tela antes do envio.
+- `patrimonio`
+- `nome`
+- `pool`
+- `categoria`
 
-Se já existir o mesmo patrimônio no mesmo Pool, a importação atualiza o registro existente.
+Exemplo:
+
+```text
+patrimonio | nome                 | pool           | categoria   | fabricante | modelo
+TI-0001    | Notebook corporativo | TI             | Notebook    | Dell       | Latitude 5450
+TI-0002    | Monitor 24            | TI             | Monitor     | LG         | 24MP400
+ADM-0001   | Cadeira ergonômica    | Administrativo | Mobiliário  | Flexform   | Uni
+```
+
+### Fluxo
+
+```text
+Selecionar arquivo
+      ↓
+Analisar arquivo
+      ↓
+Pré-validação
+      ↓
+┌────────────────┬────────────────────┐
+│ Linhas válidas │ Linhas rejeitadas  │
+│ Criar/Atualizar│ Exibir motivo      │
+└────────────────┴────────────────────┘
+      ↓
+Importar somente os válidos
+```
+
+Regras importantes:
+
+- Pool precisa existir e estar ativo.
+- Categoria precisa existir.
+- O sistema aceita diferenças apenas de caixa e acentuação. Ex.: `MOBILIÁRIO`, `mobiliário` e `Mobiliario` apontam para a mesma categoria cadastrada.
+- Não há correção aproximada de nomes. `Notbook` **não** será convertido em `Notebook`.
+- Pool ou Categoria inexistentes não são criados automaticamente.
+- Linha inválida não é gravada.
+- Se o mesmo patrimônio já existir no mesmo Pool, a linha válida atualiza o ativo existente.
+- Se houver o mesmo patrimônio repetido para o mesmo Pool dentro do arquivo, a repetição é rejeitada.
+
+O botão **Baixar modelo XLSX** consulta o backend e gera o modelo com duas abas auxiliares:
+
+- `POOLS`: Pools ativos disponíveis.
+- `CATEGORIAS`: Categorias disponíveis.
+
+O arquivo estático `modelo_importacao_ativos.xlsx` da raiz serve como exemplo, mas o modelo baixado pela tela é o mais indicado porque reflete os cadastros atuais.
 
 ## Endpoints principais
 
@@ -198,8 +186,6 @@ DELETE /folders/:id           ADMIN, MANAGER
 GET    /categories            TODOS
 POST   /categories            ADMIN, MANAGER
 DELETE /categories/:id        ADMIN, MANAGER
-POST   /categories/:id/types  ADMIN, MANAGER
-POST   /categories/:id/fields ADMIN, MANAGER
 
 GET    /assets                TODOS
 GET    /assets/summary        TODOS
@@ -210,6 +196,8 @@ DELETE /assets/:id            ADMIN, MANAGER
 POST   /assets/:id/move       ADMIN, MANAGER
 
 GET    /imports               TODOS
+GET    /imports/template      TODOS
+POST   /imports/assets/preview ADMIN, MANAGER
 POST   /imports/assets        ADMIN, MANAGER
 ```
 
@@ -219,30 +207,23 @@ Todos os endpoints, exceto `/health` e `/auth/login`, exigem:
 Authorization: Bearer <token>
 ```
 
-## Atualizar uma instalação v4
+## Atualizar da v5 para v6
 
-A v5 reutiliza o modelo de usuário que já existia na v4, portanto não exige apagar o banco.
+A v6 não altera o schema do banco, portanto não é necessário apagar o PostgreSQL nem recriar o volume.
 
-```powershell
+```bash
 docker compose down
-docker compose build --no-cache
-docker compose up -d
+docker compose up -d --build
 ```
 
-Depois confira:
+Se o frontend continuar com um bundle antigo, reconstrua apenas ele:
 
-```powershell
-docker compose ps
-docker compose logs -f backend
+```bash
+docker compose build --no-cache frontend
+docker compose up -d --force-recreate frontend
 ```
 
-Não use:
-
-```powershell
-docker compose down -v
-```
-
-se quiser manter os dados do PostgreSQL.
+Não use `docker compose down -v` se quiser manter os dados.
 
 ## Desenvolvimento sem Docker
 

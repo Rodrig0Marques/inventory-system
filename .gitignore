@@ -1,9 +1,10 @@
+.env
 node_modules/
 .next/
 dist/
-.env
+*.log
+.DS_Store
+postgres_data/
+*.tsbuildinfo
 .env.local
 .env.production
-*.log
-coverage/
-.DS_Store
