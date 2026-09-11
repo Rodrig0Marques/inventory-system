@@ -33,14 +33,37 @@ export async function assetRoutes(app: FastifyInstance) {
   const write = { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) };
 
   app.get('/summary', async request => {
-    const where = poolScope(request);
-    const [total, byStatus, value] = await prisma.$transaction([
-      prisma.asset.count({ where }), prisma.asset.groupBy({ by: ['status'], where, _count: { _all: true } }),
-      prisma.asset.aggregate({ where, _sum: { purchasePrice: true } }),
-    ]);
-    return { total, byStatus, totalValue: value._sum.purchasePrice ?? 0 };
-  });
+    const where: Prisma.AssetWhereInput = poolScope(request);
 
+    const totalQuery = prisma.asset.count({ where });
+
+    // Separe a consulta para evitar erro de inferência no $transaction.
+    // Sem await aqui: a execução permanece dentro da transação abaixo.
+    const byStatusQuery = prisma.asset.groupBy({
+      by: ['status'],
+      where,
+      orderBy: { status: 'asc' },
+      _count: { _all: true },
+    });
+
+    const valueQuery = prisma.asset.aggregate({
+      where,
+      _sum: { purchasePrice: true },
+    });
+
+    const [total, byStatus, value] = await prisma.$transaction([
+      totalQuery,
+      byStatusQuery,
+      valueQuery,
+    ]);
+
+    return {
+      total,
+      byStatus,
+      totalValue: value._sum.purchasePrice ?? 0,
+    };
+  });
+  
   app.get('/', async request => {
     const q = z.object({ search: z.string().optional(), poolId: z.string().optional(), categoryId: z.string().optional(), folderId: z.string().optional(),
       status: z.nativeEnum(AssetStatus).optional(), page: z.coerce.number().int().positive().default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }).parse(request.query);
