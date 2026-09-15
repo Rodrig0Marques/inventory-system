@@ -120,13 +120,16 @@ export default function AssetsPage() {
 
   return <>
     <div className="page-head">
-      <div>
-        <div className="eyebrow">Patrimônio</div>
-        <h1>Ativos</h1>
-        <div className="page-description">Cadastre, consulte e organize os itens da empresa.</div>
-      </div>
-      <div className="count-pill">{items.length} resultado(s)</div>
+  <div className="page-head-content">
+    <div className="eyebrow">Patrimônio</div>
+    <h1>Ativos</h1>
+    <div className="page-description">
+      Cadastre, consulte e organize os itens da empresa.
     </div>
+  </div>
+
+  <div className="count-pill">{items.length} resultado(s)</div>
+</div>
 
     {(error || success) && <div className={`notice ${error ? 'notice-error' : 'notice-success'}`}>{error || success}</div>}
 

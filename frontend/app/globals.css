@@ -357,3 +357,15 @@ tbody tr:last-child td { border-bottom: 0; }
 .button-link { display:inline-flex; align-items:center; border-radius:10px; padding:12px 16px; text-decoration:none; }
 @media(max-width:900px) { .component-line { grid-template-columns:1fr 1fr; } .stock-kpis { gap:8px; } }
 @media(max-width:600px) { .stock-kpis,.stock-form-grid,.asset-detail-grid,.component-line { grid-template-columns:1fr; } .stock-pagination { flex-wrap:wrap; } .stock-category-grid { grid-template-columns:1fr; } }
+
+.page-head-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.page-head-content .eyebrow,
+.page-head-content h1,
+.page-head-content .page-description {
+  margin: 0;
+}
