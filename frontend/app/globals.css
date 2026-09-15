@@ -369,3 +369,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .page-head-content .page-description {
   margin: 0;
 }
+
+.back-to-assets {
+  display: inline-block;
+  margin-bottom: 24px;
+}
