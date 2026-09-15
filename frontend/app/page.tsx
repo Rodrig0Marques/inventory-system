@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
-import { api } from '../../lib/api';
-import { canManage, getSessionUser } from '../../lib/session';
+import { api } from '../lib/api';
+import { canManage, getSessionUser } from '../lib/session';
 
 type Pool = { id: string; name: string };
 type Folder = { id: string; name: string; poolId: string };
