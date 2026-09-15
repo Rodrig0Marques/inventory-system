@@ -148,7 +148,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .entity-subtitle { margin-top: 3px; color: #8b96a7; font-size: 11px; }
 .soft-badge, .number-chip { display: inline-flex; min-width: 27px; justify-content: center; border-radius: 999px; background: #f0f3f7; color: #56657a; padding: 4px 8px; font-size: 11px; font-weight: 750; }
 .pool-badge { display: inline-flex; border-radius: 999px; background: #eff6ff; color: #315da8; padding: 4px 8px; font-size: 10px; font-weight: 800; }
-.patrimony-code { display: inline-flex; padding: 15px 15px; border-radius: 7px; background: #f4f6f9; color: #27364a; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; font-weight: 750; }
+.patrimony-code { display: inline-flex; padding: 5px 7px; border-radius: 7px; background: #f4f6f9; color: #27364a; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; font-weight: 750; }
 .icon-danger, .mini-delete { color: #a8342a; background: #fff; border: 1px solid #f2d1cd; border-radius: 8px; padding: 7px 9px; font-size: 11px; font-weight: 750; }
 .icon-danger:hover, .mini-delete:hover { color: #8e251c; background: #fff5f4; border-color: #efb9b3; }
 .success-count { color: #087443; background: #ecfdf3; border-radius: 999px; padding: 4px 8px; font-weight: 800; }
@@ -357,11 +357,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .button-link { display:inline-flex; align-items:center; border-radius:10px; padding:12px 16px; text-decoration:none; }
 @media(max-width:900px) { .component-line { grid-template-columns:1fr 1fr; } .stock-kpis { gap:8px; } }
 @media(max-width:600px) { .stock-kpis,.stock-form-grid,.asset-detail-grid,.component-line { grid-template-columns:1fr; } .stock-pagination { flex-wrap:wrap; } .stock-category-grid { grid-template-columns:1fr; } }
-
+/* Ajustes de espacamento dos cabecalhos de ativos */
 .page-head-content {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .page-head-content .eyebrow,
@@ -370,7 +370,13 @@ tbody tr:last-child td { border-bottom: 0; }
   margin: 0;
 }
 
-.back-to-assets {
-  display: inline-block;
-  margin-bottom: 24px;
+.asset-detail-back {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 28px;
 }
+
+.asset-detail-page-head {
+  align-items: flex-start;
+}
+
