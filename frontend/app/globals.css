@@ -55,7 +55,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .topbar-badge { display: flex !important; align-items: center; gap: 8px !important; color: #4c5a6e; font-size: 12px; background: #f8fafc; border: 1px solid #e7ebf1; padding: 7px 10px; border-radius: 999px; }
 .content { padding: 32px 34px 44px; min-width: 0; max-width: 1680px; margin: 0 auto; }
 
-.page-head { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin-bottom: 22px; }
+.page-head { display: flex; justify-content: space-between; align-items: flex-end;; gap: 18px; margin-bottom: 22px; }
 h1 { margin: 0; font-size: clamp(28px, 3vw, 36px); line-height: 1.08; letter-spacing: -.035em; color: #172033; }
 h2 { margin: 0; font-size: 19px; letter-spacing: -.015em; color: #1c293b; }
 .page-description { color: #718096; font-size: 14px; margin-top: 8px; }

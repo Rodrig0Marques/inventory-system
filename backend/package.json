@@ -16,15 +16,15 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
-    "@fastify/jwt": "^9.0.0",
+    "@fastify/jwt": "^10.2.2",
     "@fastify/multipart": "^9.0.0",
     "@prisma/client": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "fast-xml-parser": "^5.0.0",
     "fastify": "^5.0.0",
-    "xlsx": "^0.18.5",
-    "zod": "^3.23.8",
-    "fastify-plugin": "^5.0.0"
+    "fastify-plugin": "^5.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -32,5 +32,8 @@
     "prisma": "^6.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.2"
   }
 }

@@ -12,5 +12,6 @@
     "dev:frontend": "npm run dev --workspace frontend",
     "prisma:generate": "npm run prisma:generate --workspace backend",
     "seed": "npm run seed --workspace backend"
-  }
+  },
+  "overrides": {}
 }
