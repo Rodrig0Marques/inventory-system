@@ -3,7 +3,7 @@ import { CustomFieldType, UserRole } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../plugins/prisma.js';
 import { audit } from '../../utils/audit.js';
-import { poolScope } from '../../utils/access.js';
+import { descendants, poolScope } from '../../utils/access.js';
 
 export async function categoryRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
@@ -31,6 +31,39 @@ export async function categoryRoutes(app: FastifyInstance) {
     const result = await prisma.category.create({ data });
     await audit(request, 'CREATE', 'Category', result.id, undefined, result);
     return reply.status(201).send(result);
+  });
+
+  app.put('/:id', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const data = z.object({
+      name: z.string().trim().min(1).max(200).optional(),
+      description: z.string().trim().max(4000).optional().nullable(),
+      parentId: z.string().min(1).optional().nullable(),
+    }).refine(value => Object.keys(value).length > 0, { message: 'Informe ao menos um campo para alterar.' }).parse(request.body);
+
+    const before = await prisma.category.findUnique({ where: { id } });
+    if (!before) return reply.status(404).send({ message: 'Categoria não encontrada' });
+
+    if (data.name && data.name !== before.name) {
+      const duplicate = await prisma.category.findUnique({ where: { name: data.name } });
+      if (duplicate) return reply.status(409).send({ message: 'Já existe uma categoria com esse nome' });
+    }
+
+    if (data.parentId !== undefined) {
+      if (data.parentId === id) return reply.status(400).send({ message: 'Uma categoria não pode ser pai dela mesma.' });
+      if (data.parentId) {
+        const parent = await prisma.category.findUnique({ where: { id: data.parentId } });
+        if (!parent) return reply.status(400).send({ message: 'Categoria pai não encontrada.' });
+        const categories = await prisma.category.findMany({ select: { id: true, parentId: true } });
+        if (descendants(categories, id).includes(data.parentId)) {
+          return reply.status(400).send({ message: 'A categoria pai não pode ser uma subcategoria da própria categoria.' });
+        }
+      }
+    }
+
+    const result = await prisma.category.update({ where: { id }, data });
+    await audit(request, 'UPDATE', 'Category', id, before, result);
+    return reply.send(result);
   });
 
   app.delete('/:id', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {

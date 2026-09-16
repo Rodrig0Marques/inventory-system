@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { categoryPath } from '../../lib/inventory';
+import { categoryPath, descendantIds } from '../../lib/inventory';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { canManage, getSessionUser } from '../../lib/session';
@@ -33,6 +33,7 @@ export default function StructurePage() {
   const [categoryParent, setCategoryParent] = useState('');
   const [categoryName, setCategoryName] = useState('');
   const [categoryDescription, setCategoryDescription] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState('');
   const [folderName, setFolderName] = useState('');
   const [folderPool, setFolderPool] = useState('');
   const [parentId, setParentId] = useState('');
@@ -60,22 +61,44 @@ export default function StructurePage() {
   }, []);
 
   const availableParents = useMemo(() => folders.filter(folder => folder.poolId === folderPool), [folders, folderPool]);
+  const categoryParentOptions = useMemo(() => {
+    if (!editingCategoryId) return categories;
+    const blocked = descendantIds(categories, editingCategoryId);
+    return categories.filter(category => !blocked.has(category.id));
+  }, [categories, editingCategoryId]);
 
-  async function createCategory(event: FormEvent) {
+  function resetCategoryForm() {
+    setEditingCategoryId('');
+    setCategoryName('');
+    setCategoryDescription('');
+    setCategoryParent('');
+  }
+
+  function startEditCategory(category: Category) {
+    setEditingCategoryId(category.id);
+    setCategoryName(category.name);
+    setCategoryDescription(category.description || '');
+    setCategoryParent(category.parentId || '');
+    setError('');
+    setSuccess('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function saveCategory(event: FormEvent) {
     event.preventDefault();
     setError('');
     setSuccess('');
     try {
-      await api('/categories', {
-        method: 'POST',
+      await api(editingCategoryId ? `/categories/${editingCategoryId}` : '/categories', {
+        method: editingCategoryId ? 'PUT' : 'POST',
         body: JSON.stringify({ name: categoryName, description: categoryDescription || null, parentId: categoryParent || null }),
       });
-      setCategoryName('');
-      setCategoryDescription(''); setCategoryParent('');
-      setSuccess('Categoria criada com sucesso.');
+      const wasEditing = !!editingCategoryId;
+      resetCategoryForm();
+      setSuccess(wasEditing ? 'Categoria atualizada com sucesso.' : 'Categoria criada com sucesso.');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao criar categoria.');
+      setError(e instanceof Error ? e.message : editingCategoryId ? 'Falha ao editar categoria.' : 'Falha ao criar categoria.');
     }
   }
 
@@ -138,12 +161,12 @@ export default function StructurePage() {
 
     {canEdit && <section className="management-grid">
       {canAdmin && <div className="card form-card">
-        <div className="card-heading"><div className="card-icon">C</div><div><h2>Nova categoria</h2><p>Defina um novo tipo geral de patrimônio.</p></div></div>
-        <form onSubmit={createCategory} className="stack-form">
-          <div className="form-field"><label>Categoria pai</label><select value={categoryParent} onChange={e => setCategoryParent(e.target.value)}><option value="">Raiz das categorias</option>{categories.map(c => <option key={c.id} value={c.id}>{categoryPath(categories,c.id)}</option>)}</select><div className="field-help">Exemplo: Memórias / Memória 8gb / 8gb 2666Ghz. Os nomes devem ser únicos no catálogo.</div></div>
+        <div className="card-heading"><div className="card-icon">C</div><div><h2>{editingCategoryId ? 'Editar categoria' : 'Nova categoria'}</h2><p>{editingCategoryId ? 'Altere nome, descrição ou posição na hierarquia.' : 'Defina um novo tipo geral de patrimônio.'}</p></div></div>
+        <form onSubmit={saveCategory} className="stack-form">
+          <div className="form-field"><label>Categoria pai</label><select value={categoryParent} onChange={e => setCategoryParent(e.target.value)}><option value="">Raiz das categorias</option>{categoryParentOptions.map(c => <option key={c.id} value={c.id}>{categoryPath(categories,c.id)}</option>)}</select><div className="field-help">Exemplo: Memórias / Memória 8gb / 8gb 2666Ghz. Os nomes devem ser únicos no catálogo.</div></div>
           <div className="form-field"><label>Nome</label><input value={categoryName} onChange={e => setCategoryName(e.target.value)} placeholder="Ex.: Projetor, Veículo, Cadeira" required /></div>
           <div className="form-field"><label>Descrição</label><textarea rows={3} value={categoryDescription} onChange={e => setCategoryDescription(e.target.value)} placeholder="Opcional" /></div>
-          <button className="primary full-button">Criar categoria</button>
+          <div className="form-actions-row">{editingCategoryId && <button type="button" className="secondary" onClick={resetCategoryForm}>Cancelar</button>}<button className="primary">{editingCategoryId ? 'Salvar categoria' : 'Criar categoria'}</button></div>
         </form>
       </div>}
 
@@ -165,7 +188,7 @@ export default function StructurePage() {
         {categories.map(category => <article className="category-item" key={category.id}>
           <div className="category-symbol">{category.name.slice(0, 1).toUpperCase()}</div>
           <div className="category-content"><Link href={`/stock?categoryId=${category.id}`}><strong>{categoryPath(categories,category.id)}</strong></Link><span>{category._count.assets} ativo(s) direto(s) | Componentes: {category.total || 0} no total / {category.available || 0} disponíveis</span></div>
-          {canAdmin && <button type="button" className="mini-delete" onClick={() => removeCategory(category)} title="Excluir categoria">Excluir</button>}
+          {canAdmin && <div className="row-actions"><button type="button" className="table-action" onClick={() => startEditCategory(category)} title="Editar categoria">Editar</button><button type="button" className="mini-delete" onClick={() => removeCategory(category)} title="Excluir categoria">Excluir</button></div>}
         </article>)}
         {categories.length === 0 && <div className="empty-state">Nenhuma categoria cadastrada.</div>}
       </div>

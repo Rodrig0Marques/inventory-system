@@ -8,7 +8,7 @@ import { categoryPath, descendantIds, requestId, type CategoryNode } from '../..
 
 type Pool = { id: string; name: string; active: boolean };
 type Totals = { total: number; available: number; installed: number };
-type Category = CategoryNode & Totals & { profileCount: number; assetCount: number };
+type Category = CategoryNode & Totals & { profileCount: number; assetCount: number; description?: string | null };
 type Profile = Totals & { id: string; name: string; poolId: string; categoryId: string; description?: string; specifications?: string; manufacturer?: string; model?: string; pool: Pool };
 type Catalog = { profiles: Profile[]; categories: Category[]; totals: Totals };
 type Asset = { id: string; name: string; patrimonyNumber: string; poolId: string };
@@ -39,12 +39,13 @@ export default function StockPage() {
   const [catalog, setCatalog] = useState<Catalog>(initial), [categoryId, setCategoryId] = useState('');
   const [tab, setTab] = useState<'catalog' | 'assign' | 'batch' | 'movements'>('catalog');
   const [error, setError] = useState(''), [success, setSuccess] = useState(''), [busy, setBusy] = useState(false);
-  const [canEdit, setCanEdit] = useState(false), [loading, setLoading] = useState(true);
+  const [canEdit, setCanEdit] = useState(false), [canAdmin, setCanAdmin] = useState(false), [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(blankProfile), [editing, setEditing] = useState(''), [showProfile, setShowProfile] = useState(false);
   const [parts, setParts] = useState<Part[]>([]), [selected, setSelected] = useState<Record<string, Asset>>({});
   const [assets, setAssets] = useState<Asset[]>([]), [assetTotal, setAssetTotal] = useState(0), [assetPage, setAssetPage] = useState(1), [search, setSearch] = useState('');
   const [batchText, setBatchText] = useState(''), [batch, setBatch] = useState({ categoryId: '', folderPrefix: '', manufacturer: '', model: '', location: '', responsible: '' });
   const [adjustment, setAdjustment] = useState<{ profile: Profile; type: 'RECEIPT' | 'WITHDRAWAL' } | null>(null);
+  const [categoryEditor, setCategoryEditor] = useState<{ id: string; name: string; parentId: string; description: string } | null>(null);
   const [quantity, setQuantity] = useState(1), [notes, setNotes] = useState('');
   const [movements, setMovements] = useState<Movement[]>([]), [movementPage, setMovementPage] = useState(1), [movementTotal, setMovementTotal] = useState(0);
   const pending = useRef<{ signature: string; id: string } | null>(null);
@@ -54,7 +55,9 @@ export default function StockPage() {
     setCatalog(data);
   }, [poolId]);
   useEffect(() => {
-    setCanEdit(canManage(getSessionUser()?.role));
+    const role = getSessionUser()?.role;
+    setCanEdit(canManage(role));
+    setCanAdmin(role === 'ADMIN');
     api<Pool[]>('/pools').then(setPools).catch(e => setError(e.message));
     const q = new URLSearchParams(window.location.search);
     if (q.get('poolId')) setPoolId(q.get('poolId')!);
@@ -95,6 +98,27 @@ export default function StockPage() {
   }
   function changePool(id: string) { setPoolId(id); setSelected({}); setParts([]); setAssetPage(1); setMovementPage(1); setEditing(''); setShowProfile(false); setError(''); setSuccess(''); }
   function editProfile(p: Profile) { setEditing(p.id); setProfile({ name: p.name, categoryId: p.categoryId, description: p.description || '', manufacturer: p.manufacturer || '', model: p.model || '', specifications: p.specifications || '', initialAvailable: 0 }); setPoolId(p.poolId); setShowProfile(true); }
+  function editCategory(id: string) {
+    const category = catalog.categories.find(c => c.id === id);
+    if (!category) return;
+    setCategoryEditor({ id: category.id, name: category.name, parentId: category.parentId || '', description: category.description || '' });
+  }
+  async function saveCategory(e: FormEvent) {
+    e.preventDefault();
+    if (!categoryEditor) return;
+    await run(async () => {
+      await api(`/categories/${categoryEditor.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: categoryEditor.name,
+          description: categoryEditor.description || null,
+          parentId: categoryEditor.parentId || null,
+        }),
+      });
+      setCategoryEditor(null);
+      setSuccess('Categoria atualizada com sucesso.');
+    });
+  }
   async function saveProfile(e: FormEvent) {
     e.preventDefault();
     await run(async () => {
@@ -134,7 +158,7 @@ export default function StockPage() {
         {canEdit && !poolId && <p className="field-help">Selecione um Pool no topo para criar perfis ou movimentar unidades.</p>}
         {canEdit && showProfile && <form onSubmit={saveProfile} className="stock-profile-form">
           <div className="stock-form-grid"><Field label="Nome do perfil *"><input required maxLength={200} value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} /></Field>
-          <Field label="Categoria / subcategoria *"><select required value={profile.categoryId} onChange={e => setProfile({ ...profile, categoryId: e.target.value })}><option value="">Selecione</option>{catalog.categories.map(c => <option key={c.id} value={c.id}>{categoryPath(catalog.categories, c.id)}</option>)}</select></Field>
+          <div className="form-field"><label>Categoria / subcategoria *</label><div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><select style={{ flex: '1 1 320px' }} required value={profile.categoryId} onChange={e => setProfile({ ...profile, categoryId: e.target.value })}><option value="">Selecione</option>{catalog.categories.map(c => <option key={c.id} value={c.id}>{categoryPath(catalog.categories, c.id)}</option>)}</select>{canAdmin && profile.categoryId && <button type="button" className="secondary" onClick={() => editCategory(profile.categoryId)}>Editar categoria</button>}</div></div>
           <Field label="Fabricante"><input value={profile.manufacturer} onChange={e => setProfile({ ...profile, manufacturer: e.target.value })} /></Field><Field label="Modelo"><input value={profile.model} onChange={e => setProfile({ ...profile, model: e.target.value })} /></Field>
           <Field label="Especificações técnicas"><textarea rows={2} value={profile.specifications} onChange={e => setProfile({ ...profile, specifications: e.target.value })} /></Field>
           {!editing && <Field label="Saldo inicial disponível"><input type="number" required min={0} max={1000000} value={profile.initialAvailable} onChange={e => setProfile({ ...profile, initialAvailable: Number(e.target.value) })} /></Field>}</div>
@@ -172,6 +196,16 @@ export default function StockPage() {
     </section>}
 
     {tab === 'movements' && <section className="card section-card"><div className="section-heading"><div><h2>Movimentações de componentes</h2><p>Histórico dos Pools aos quais você tem acesso.</p></div></div><div className="table-wrap"><table><thead><tr><th>Data</th><th>Pool</th><th>Perfil</th><th>Operação</th><th>Quantidade</th><th>Disponível após</th><th>Observação</th></tr></thead><tbody>{movements.map(m => <tr key={m.id}><td>{new Date(m.createdAt).toLocaleString('pt-BR')}</td><td>{m.profile.pool.name}</td><td>{m.profile.name}</td><td>{labels[m.type] || m.type}</td><td>{m.quantity}</td><td>{m.availableAfter}</td><td>{m.notes || '-'}</td></tr>)}{!movements.length && <tr><td colSpan={7}><div className="empty-state">Nenhuma movimentação.</div></td></tr>}</tbody></table></div><div className="stock-pagination"><button className="secondary" disabled={movementPage === 1} onClick={() => setMovementPage(movementPage - 1)}>Anterior</button><span>Página {movementPage} | {movementTotal} registros</span><button className="secondary" disabled={movementPage * 50 >= movementTotal} onClick={() => setMovementPage(movementPage + 1)}>Próxima</button></div></section>}
+
+    {categoryEditor && <div className="modal-backdrop"><div className="modal-card"><div className="modal-heading"><div><h2>Editar categoria</h2><p>Altere o nome, a descrição ou a posição da categoria na hierarquia.</p></div><button type="button" className="modal-close" onClick={() => setCategoryEditor(null)}>×</button></div>
+      <form className="stack-form" onSubmit={saveCategory}>
+        <Field label="Nome *"><input required maxLength={200} value={categoryEditor.name} onChange={e => setCategoryEditor({ ...categoryEditor, name: e.target.value })} /></Field>
+        <Field label="Categoria pai"><select value={categoryEditor.parentId} onChange={e => setCategoryEditor({ ...categoryEditor, parentId: e.target.value })}><option value="">Raiz das categorias</option>{catalog.categories.filter(c => !descendantIds(catalog.categories, categoryEditor.id).has(c.id)).map(c => <option key={c.id} value={c.id}>{categoryPath(catalog.categories, c.id)}</option>)}</select></Field>
+        <Field label="Descrição"><textarea rows={3} maxLength={4000} value={categoryEditor.description} onChange={e => setCategoryEditor({ ...categoryEditor, description: e.target.value })} /></Field>
+        <p className="field-help">Renomear ou mover a categoria altera o caminho exibido nos perfis e ativos vinculados, sem alterar os saldos.</p>
+        <div className="form-actions-row"><button type="button" className="secondary" onClick={() => setCategoryEditor(null)}>Cancelar</button><button disabled={busy}>{busy ? 'Salvando...' : 'Salvar categoria'}</button></div>
+      </form>
+    </div></div>}
 
     {adjustment && <div className="modal-backdrop"><div className="modal-card"><div className="modal-heading"><div><h2>Saldo disponível</h2><p>{adjustment.profile.name} | {adjustment.profile.pool.name}</p></div><button type="button" className="modal-close" onClick={() => setAdjustment(null)}>×</button></div>
       <form className="stack-form" onSubmit={e => { e.preventDefault(); run(async () => { await post(`/stock/profiles/${adjustment.profile.id}/stock`, { type: adjustment.type, quantity, notes }); setAdjustment(null); setSuccess('Movimentação registrada.'); }); }}>
