@@ -120,7 +120,7 @@ export default function AssetsPage() {
 
   return <>
     <div className="page-head">
-      <div>
+      <div className="page-head-content">
         <div className="eyebrow">Patrimônio</div>
         <h1>Ativos</h1>
         <div className="page-description">Cadastre, consulte e organize os itens da empresa.</div>
@@ -172,7 +172,7 @@ export default function AssetsPage() {
               <td>{item.responsible || '-'}</td>
               <td><span className="pool-badge">{item.pool.name}</span></td>
               <td>{item.category.name}</td>
-              {canEdit && <td className="align-right"><button type="button" className="icon-danger" onClick={() => removeAsset(item)}>Excluir</button></td>}
+              {canEdit && <td className="align-right"><div className="row-actions"><Link className="table-action" href={`/assets/${item.id}/edit`}>Editar</Link><button type="button" className="icon-danger" onClick={() => removeAsset(item)}>Excluir</button></div></td>}
             </tr>)}
             {items.length === 0 && <tr><td colSpan={canEdit ? 10 : 9}><div className="empty-state">Nenhum ativo encontrado.</div></td></tr>}
           </tbody>
