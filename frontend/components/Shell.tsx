@@ -84,7 +84,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-wrap">
-          <div className="brand-mark">I</div>
+          <div className="brand-mark">C</div>
           <div>
             <div className="brand">Inventário</div>
             <div className="sidebar-muted">Gestão patrimonial</div>
