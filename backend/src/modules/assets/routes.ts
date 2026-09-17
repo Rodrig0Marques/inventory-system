@@ -33,24 +33,24 @@ export async function assetRoutes(app: FastifyInstance) {
   const write = { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) };
 
   app.get('/summary', async request => {
-    // Contagens podem ser globais para usuários explicitamente autorizados,
-    // enquanto valores financeiros continuam respeitando os Pools permitidos.
+    // Os quatro indicadores principais do Dashboard podem ser globais para
+    // usuários explicitamente autorizados. Detalhes por Pool continuam escopados.
     const scopedWhere: Prisma.AssetWhereInput = poolScope(request);
-    const countsWhere: Prisma.AssetWhereInput = request.canGlobalDashboardStats ? {} : scopedWhere;
+    const dashboardWhere: Prisma.AssetWhereInput = request.canGlobalDashboardStats ? {} : scopedWhere;
 
-    const totalQuery = prisma.asset.count({ where: countsWhere });
+    const totalQuery = prisma.asset.count({ where: dashboardWhere });
 
     // Separe a consulta para evitar erro de inferência no $transaction.
     // Sem await aqui: a execução permanece dentro da transação abaixo.
     const byStatusQuery = prisma.asset.groupBy({
       by: ['status'],
-      where: countsWhere,
+      where: dashboardWhere,
       orderBy: { status: 'asc' },
       _count: { _all: true },
     });
 
     const valueQuery = prisma.asset.aggregate({
-      where: scopedWhere,
+      where: dashboardWhere,
       _sum: { purchasePrice: true },
     });
 

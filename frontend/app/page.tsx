@@ -54,7 +54,7 @@ export default function Dashboard() {
       <div><div className="eyebrow">Indicadores</div><h2 className="page-section-title">Resumo patrimonial</h2></div>
     </div>
 
-    {data?.countsAreGlobal && !isAdmin && <div className="notice notice-info">As quantidades de ativos, em uso e disponíveis abaixo consideram todos os Pools. O valor patrimonial, a distribuição por Pool e as categorias continuam respeitando apenas os Pools liberados para sua conta.</div>}
+    {data?.countsAreGlobal && !isAdmin && <div className="notice notice-info">Os indicadores Total de ativos, Valor patrimonial, Em uso e Disponíveis consideram todos os Pools. A distribuição por Pool e as categorias continuam respeitando apenas os Pools liberados para sua conta.</div>}
 
     <section className="grid kpi-grid">
       <div className="card kpi-card"><div className="kpi-icon kpi-blue">A</div><div><div className="label">Total de ativos</div><div className="kpi">{data?.total ?? '-'}</div></div></div>

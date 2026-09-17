@@ -207,9 +207,9 @@ export default function UsersPage() {
             </>}
           </fieldset>
           <fieldset className="pool-permissions"><legend>Permissões adicionais</legend>
-            {form.role === 'ADMIN' ? <p>Administradores já possuem consulta global e visão global das contagens do Dashboard.</p> : <>
+            {form.role === 'ADMIN' ? <p>Administradores já possuem consulta global e visão global dos indicadores do Dashboard.</p> : <>
               <label className="permission-check"><input type="checkbox" checked={form.canGlobalAssetLookup} onChange={e => setForm({ ...form, canGlobalAssetLookup: e.target.checked })} /><span><strong>Consulta global por patrimônio</strong><br /><small>Permite localizar um patrimônio exato em qualquer Pool, somente para consulta. A listagem normal continua restrita aos Pools liberados.</small></span></label>
-              <label className="permission-check"><input type="checkbox" checked={form.canGlobalDashboardStats} onChange={e => setForm({ ...form, canGlobalDashboardStats: e.target.checked })} /><span><strong>Totais globais no Dashboard</strong><br /><small>Exibe as quantidades totais, em uso e disponíveis considerando todos os Pools. Valor patrimonial, distribuição por Pool e categorias continuam restritos aos Pools liberados.</small></span></label>
+              <label className="permission-check"><input type="checkbox" checked={form.canGlobalDashboardStats} onChange={e => setForm({ ...form, canGlobalDashboardStats: e.target.checked })} /><span><strong>Indicadores globais no Dashboard</strong><br /><small>Exibe Total de ativos, Valor patrimonial, Em uso e Disponíveis considerando todos os Pools. Distribuição por Pool e categorias continuam restritas aos Pools liberados.</small></span></label>
             </>}
           </fieldset>
           {editingId && <label className="toggle-row"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /><span><strong>Usuário ativo</strong><small>Usuários inativos não conseguem entrar no sistema.</small></span></label>}
@@ -227,7 +227,7 @@ export default function UsersPage() {
         <div className="permission-list">
           <div><span className="role-badge role-admin">Administrador</span><p>Acesso total, incluindo gerenciamento de usuários.</p></div>
           <div><span className="role-badge role-manager">Gestor</span><p>Gerencia ativos, pastas, estoque e importações somente nos Pools liberados. Pools e categorias globais são administrados pelo ADMIN.</p></div>
-          <div><span className="role-badge role-viewer">Visualizador</span><p>Consulta apenas os Pools liberados, sem fazer alterações. Opcionalmente, pode receber consulta global por patrimônio e totais globais no Dashboard.</p></div>
+          <div><span className="role-badge role-viewer">Visualizador</span><p>Consulta apenas os Pools liberados, sem fazer alterações. Opcionalmente, pode receber consulta global por patrimônio e indicadores globais no Dashboard.</p></div>
         </div>
       </div>
     </section>
