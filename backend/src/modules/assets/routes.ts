@@ -63,7 +63,7 @@ export async function assetRoutes(app: FastifyInstance) {
       totalValue: value._sum.purchasePrice ?? 0,
     };
   });
-  
+
   app.get('/', async request => {
     const q = z.object({ search: z.string().optional(), poolId: z.string().optional(), categoryId: z.string().optional(), folderId: z.string().optional(),
       status: z.nativeEnum(AssetStatus).optional(), page: z.coerce.number().int().positive().default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }).parse(request.query);
@@ -74,6 +74,32 @@ export async function assetRoutes(app: FastifyInstance) {
       prisma.asset.count({ where }),
     ]);
     return { items, total, page: q.page, pageSize: q.pageSize };
+  });
+
+  app.get('/global-lookup', async request => {
+    if (!request.canGlobalAssetLookup) fail(403, 'Você não possui permissão para consultar patrimônios fora dos seus Pools.');
+
+    const { patrimony } = z.object({
+      patrimony: z.string().trim().min(1, 'Informe o patrimônio.').max(100),
+    }).parse(request.query);
+
+    // Busca propositalmente exata: permite localizar um patrimônio em qualquer Pool
+    // sem transformar a permissão em uma listagem global do inventário.
+    const items = await prisma.asset.findMany({
+      where: { patrimonyNumber: { equals: patrimony, mode: 'insensitive' } },
+      select: {
+        id: true, patrimonyNumber: true, name: true, description: true, status: true,
+        manufacturer: true, model: true, location: true, responsible: true,
+        pool: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+        folder: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    await audit(request, 'GLOBAL_ASSET_LOOKUP', 'Asset', undefined, undefined, { patrimony, resultCount: items.length });
+    return { items };
   });
 
   app.get('/:id', async request => {

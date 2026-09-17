@@ -8,6 +8,20 @@ import { canManage, getSessionUser } from '../../lib/session';
 type Pool = { id: string; name: string };
 type Folder = { id: string; name: string; poolId: string };
 type Category = { id: string; name: string };
+type GlobalAsset = {
+  id: string;
+  patrimonyNumber: string;
+  name: string;
+  description?: string | null;
+  status: string;
+  manufacturer?: string | null;
+  model?: string | null;
+  location?: string | null;
+  responsible?: string | null;
+  pool: Pool;
+  category: Category;
+  folder?: { id: string; name: string } | null;
+};
 type Asset = {
   id: string;
   patrimonyNumber: string;
@@ -34,6 +48,15 @@ function formatPrice(value: Asset['purchasePrice']) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(number);
 }
 
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    AVAILABLE: 'Disponível', IN_USE: 'Em uso', RESERVED: 'Reservado', MAINTENANCE: 'Em manutenção',
+    DAMAGED: 'Danificado', LOST: 'Perdido', LOANED: 'Emprestado', DISPOSED: 'Baixado / descartado',
+    SOLD: 'Vendido', INACTIVE: 'Inativo',
+  };
+  return labels[status] || status;
+}
+
 export default function AssetsPage() {
   const [items, setItems] = useState<Asset[]>([]);
   const [pools, setPools] = useState<Pool[]>([]);
@@ -45,6 +68,12 @@ export default function AssetsPage() {
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
+  const [canGlobalLookup, setCanGlobalLookup] = useState(false);
+  const [globalPatrimony, setGlobalPatrimony] = useState('');
+  const [globalResults, setGlobalResults] = useState<GlobalAsset[]>([]);
+  const [globalSearched, setGlobalSearched] = useState(false);
+  const [globalSearching, setGlobalSearching] = useState(false);
+  const [globalError, setGlobalError] = useState('');
 
   const availableFolders = folders.filter(folder => folder.poolId === form.poolId);
 
@@ -67,9 +96,32 @@ export default function AssetsPage() {
   };
 
   useEffect(() => {
-    setCanEdit(canManage(getSessionUser()?.role));
+    const session = getSessionUser();
+    setCanEdit(canManage(session?.role));
+    setCanGlobalLookup(session?.role === 'ADMIN' || Boolean(session?.canGlobalAssetLookup));
     load().catch(() => setError('Não foi possível carregar os ativos.'));
   }, []);
+
+  async function globalLookup(event: FormEvent) {
+    event.preventDefault();
+    const patrimony = globalPatrimony.trim();
+    if (!patrimony || globalSearching) return;
+
+    setGlobalSearching(true);
+    setGlobalError('');
+    setGlobalSearched(false);
+    try {
+      const result = await api<{ items: GlobalAsset[] }>(`/assets/global-lookup?patrimony=${encodeURIComponent(patrimony)}`);
+      setGlobalResults(result.items);
+      setGlobalSearched(true);
+    } catch (e) {
+      setGlobalResults([]);
+      setGlobalSearched(true);
+      setGlobalError(e instanceof Error ? e.message : 'Falha ao consultar o patrimônio.');
+    } finally {
+      setGlobalSearching(false);
+    }
+  }
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -132,6 +184,30 @@ export default function AssetsPage() {
 
     {!canEdit && <div className="notice notice-info">Seu perfil é somente leitura. Você pode consultar e pesquisar os ativos, mas não pode alterá-los.</div>}
     {canEdit && !hasStructure && <div className="notice notice-warning">Para cadastrar ativos, crie pelo menos um <Link href="/pools">pool</Link> e uma <Link href="/structure">categoria</Link>.</div>}
+
+    {canGlobalLookup && <section className="card section-card">
+      <div className="section-heading"><div><h2>Consulta global de patrimônio</h2><p>Localize um patrimônio exato em qualquer Pool. Esta consulta não amplia sua listagem normal nem concede permissão de edição.</p></div></div>
+      <form className="toolbar search-toolbar" onSubmit={globalLookup}>
+        <input value={globalPatrimony} onChange={e => { setGlobalPatrimony(e.target.value); setGlobalSearched(false); setGlobalError(''); }} placeholder="Digite o patrimônio exato, ex.: PAT-00125" maxLength={100} />
+        <button className="secondary" disabled={globalSearching || !globalPatrimony.trim()}>{globalSearching ? 'Consultando...' : 'Consultar em todos os Pools'}</button>
+      </form>
+      {globalError && <div className="notice notice-error">{globalError}</div>}
+      {globalSearched && !globalError && globalResults.length === 0 && <div className="empty-state">Nenhum patrimônio com esse código foi encontrado.</div>}
+      {globalResults.length > 0 && <div className="table-wrap">
+        <table>
+          <thead><tr><th>Patrimônio</th><th>Ativo</th><th>Pool</th><th>Categoria</th><th>Status</th><th>Localização</th><th>Responsável</th></tr></thead>
+          <tbody>{globalResults.map(item => <tr key={item.id}>
+            <td><span className="patrimony-code">{item.patrimonyNumber}</span></td>
+            <td><div className="entity-title">{item.name}</div><div className="entity-subtitle">{[item.manufacturer, item.model].filter(Boolean).join(' - ') || item.description || '-'}</div></td>
+            <td><span className="pool-badge">{item.pool.name}</span>{item.folder && <div className="entity-subtitle">{item.folder.name}</div>}</td>
+            <td>{item.category.name}</td>
+            <td>{statusLabel(item.status)}</td>
+            <td>{item.location || '-'}</td>
+            <td>{item.responsible || '-'}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>}
+    </section>}
 
     {canEdit && <section className="card section-card form-section">
       <div className="section-heading"><div><h2>Novo ativo</h2><p>Preencha apenas as informações necessárias para o patrimônio.</p></div></div>

@@ -7,10 +7,10 @@ import { audit } from '../../utils/audit.js';
 import { fail } from '../../utils/access.js';
 import { serial } from '../../utils/transaction.js';
 
-const select = { id: true, name: true, email: true, role: true, active: true, createdAt: true, updatedAt: true,
+const select = { id: true, name: true, email: true, role: true, active: true, canGlobalAssetLookup: true, createdAt: true, updatedAt: true,
   poolAccess: { select: { poolId: true, pool: { select: { name: true, active: true } } } } } as const;
 const password = z.string().min(8, 'Use pelo menos 8 caracteres.').refine(s => Buffer.byteLength(s, 'utf8') <= 72, 'Use até 72 bytes na senha.');
-const fields = z.object({ name: z.string().trim().min(2).max(200), email: z.string().trim().email().max(254), role: z.nativeEnum(UserRole), active: z.boolean(), poolIds: z.array(z.string().min(1)).max(500) });
+const fields = z.object({ name: z.string().trim().min(2).max(200), email: z.string().trim().email().max(254), role: z.nativeEnum(UserRole), active: z.boolean(), canGlobalAssetLookup: z.boolean(), poolIds: z.array(z.string().min(1)).max(500) });
 async function checkPools(tx: Prisma.TransactionClient, ids: string[]) {
   const unique = [...new Set(ids)];
   if (await tx.pool.count({ where: { id: { in: unique } } }) !== unique.length) fail(400, 'Um dos Pools selecionados não existe.');
@@ -21,11 +21,12 @@ export async function userRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authorize([UserRole.ADMIN]));
   app.get('/', async () => prisma.user.findMany({ select, orderBy: [{ active: 'desc' }, { name: 'asc' }] }));
   app.post('/', async (request, reply) => {
-    const data = fields.extend({ password, role: fields.shape.role.default(UserRole.VIEWER), active: z.boolean().default(true), poolIds: fields.shape.poolIds.default([]) }).parse(request.body);
+    const data = fields.extend({ password, role: fields.shape.role.default(UserRole.VIEWER), active: z.boolean().default(true), canGlobalAssetLookup: z.boolean().default(false), poolIds: fields.shape.poolIds.default([]) }).parse(request.body);
     const hash = await bcrypt.hash(data.password, 10);
     const user = await serial(async tx => {
       const poolIds = await checkPools(tx, data.poolIds);
       const result = await tx.user.create({ data: { name: data.name, email: data.email.toLowerCase(), password: hash, role: data.role, active: data.active,
+        canGlobalAssetLookup: data.canGlobalAssetLookup,
         poolAccess: { create: (data.role === UserRole.ADMIN ? [] : poolIds).map(poolId => ({ poolId })) } }, select });
       await audit(request, 'CREATE', 'User', result.id, undefined, result, tx); return result;
     });

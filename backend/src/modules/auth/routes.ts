@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../../plugins/prisma.js';
+import { UserRole } from '@prisma/client';
 
 export async function authRoutes(app: FastifyInstance) {
   app.post('/login', async (request, reply) => {
@@ -23,6 +24,7 @@ export async function authRoutes(app: FastifyInstance) {
       email: user.email,
       role: user.role,
       active: user.active,
+      canGlobalAssetLookup: user.role === UserRole.ADMIN || user.canGlobalAssetLookup,
     };
 
     const token = app.jwt.sign(
@@ -36,13 +38,13 @@ export async function authRoutes(app: FastifyInstance) {
   app.get('/me', { onRequest: [app.authenticate] }, async (request, reply) => {
     const user = await prisma.user.findUnique({
       where: { id: request.user.sub },
-      select: { id: true, name: true, email: true, role: true, active: true },
+      select: { id: true, name: true, email: true, role: true, active: true, canGlobalAssetLookup: true },
     });
 
     if (!user || !user.active) {
       return reply.status(401).send({ message: 'Usuário inativo ou não encontrado.' });
     }
 
-    return { ...user, poolIds: request.poolIds };
+    return { ...user, canGlobalAssetLookup: user.role === UserRole.ADMIN || user.canGlobalAssetLookup, poolIds: request.poolIds };
   });
 }

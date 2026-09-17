@@ -6,6 +6,7 @@ export type SessionUser = {
   email: string;
   role: UserRole;
   active: boolean;
+  canGlobalAssetLookup?: boolean;
   poolIds?: string[] | null;
 };
 

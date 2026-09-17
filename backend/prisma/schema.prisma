@@ -45,6 +45,7 @@ model User {
   updatedAt DateTime @updatedAt
   audits    AuditLog[]
   poolAccess UserPool[]
+  canGlobalAssetLookup Boolean @default(false)
   tokenVersion Int @default(0)
 }
 
