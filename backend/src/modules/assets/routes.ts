@@ -81,30 +81,117 @@ export async function assetRoutes(app: FastifyInstance) {
   });
 
   app.get('/global-lookup', async request => {
-    if (!request.canGlobalAssetLookup) fail(403, 'Você não possui permissão para consultar patrimônios fora dos seus Pools.');
+  if (!request.canGlobalAssetLookup) {
+    fail(
+      403,
+      'Você não possui permissão para consultar patrimônios fora dos seus Pools.'
+    );
+  }
 
-    const { patrimony } = z.object({
-      patrimony: z.string().trim().min(1, 'Informe o patrimônio.').max(100),
-    }).parse(request.query);
+  const { patrimony } = z.object({
+    patrimony: z
+      .string()
+      .trim()
+      .min(1, 'Informe pelo menos um patrimônio.')
+      .max(5000),
+  }).parse(request.query);
 
-    // Busca propositalmente exata: permite localizar um patrimônio em qualquer Pool
-    // sem transformar a permissão em uma listagem global do inventário.
-    const items = await prisma.asset.findMany({
-      where: { patrimonyNumber: { equals: patrimony, mode: 'insensitive' } },
-      select: {
-        id: true, patrimonyNumber: true, name: true, description: true, status: true,
-        manufacturer: true, model: true, location: true, responsible: true,
-        pool: { select: { id: true, name: true } },
-        category: { select: { id: true, name: true } },
-        folder: { select: { id: true, name: true } },
+  const patrimonies = [
+    ...new Set(
+      patrimony
+        .split(/[\n\r,;]+/)
+        .map(value => value.trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  if (patrimonies.length === 0) {
+    fail(400, 'Informe pelo menos um patrimônio.');
+  }
+
+  if (patrimonies.length > 50) {
+    fail(400, 'É permitido consultar no máximo 50 patrimônios por vez.');
+  }
+
+  const items = await prisma.asset.findMany({
+    where: {
+      OR: patrimonies.map(patrimony => ({
+        patrimonyNumber: {
+          equals: patrimony,
+          mode: 'insensitive',
+        },
+      })),
+    },
+
+    select: {
+      id: true,
+      patrimonyNumber: true,
+      name: true,
+      description: true,
+      status: true,
+      manufacturer: true,
+      model: true,
+      location: true,
+      responsible: true,
+
+      pool: {
+        select: {
+          id: true,
+          name: true,
+        },
       },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
 
-    await audit(request, 'GLOBAL_ASSET_LOOKUP', 'Asset', undefined, undefined, { patrimony, resultCount: items.length });
-    return { items };
+      category: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+
+      folder: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+
+    orderBy: {
+      patrimonyNumber: 'asc',
+    },
+
+    take: 50,
   });
+
+  const found = new Set(
+    items.map(item => item.patrimonyNumber.toLocaleLowerCase())
+  );
+
+  const notFound = patrimonies.filter(
+    patrimony => !found.has(patrimony.toLocaleLowerCase())
+  );
+
+  await audit(
+    request,
+    'GLOBAL_ASSET_LOOKUP',
+    'Asset',
+    undefined,
+    undefined,
+    {
+      patrimonies,
+      requestedCount: patrimonies.length,
+      resultCount: items.length,
+      notFound,
+    }
+  );
+
+  return {
+    items,
+    requestedCount: patrimonies.length,
+    resultCount: items.length,
+    notFound,
+  };
+});
 
   app.get('/:id', async request => {
     const { id } = idSchema.parse(request.params);
