@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { canManage, getSessionUser } from '../lib/session';
 
-type Summary = { total: number; totalValue: string | number; byStatus: Array<{ status: string; _count: { _all: number } }> };
+type Summary = { total: number; totalValue: string | number; byStatus: Array<{ status: string; _count: { _all: number } }>; countsAreGlobal?: boolean };
 type Pool = { id: string; name: string; _count: { assets: number; folders: number } };
 type Category = { id: string; name: string; _count: { assets: number } };
 
@@ -14,9 +14,12 @@ export default function Dashboard() {
   const [pools, setPools] = useState<Pool[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [canEdit, setCanEdit] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    setCanEdit(canManage(getSessionUser()?.role));
+    const session = getSessionUser();
+    setCanEdit(canManage(session?.role));
+    setIsAdmin(session?.role === 'ADMIN');
     Promise.all([
       api<Summary>('/assets/summary'),
       api<Pool[]>('/pools'),
@@ -50,6 +53,8 @@ export default function Dashboard() {
     <div className="page-head dashboard-head">
       <div><div className="eyebrow">Indicadores</div><h2 className="page-section-title">Resumo patrimonial</h2></div>
     </div>
+
+    {data?.countsAreGlobal && !isAdmin && <div className="notice notice-info">As quantidades de ativos, em uso e disponíveis abaixo consideram todos os Pools. O valor patrimonial, a distribuição por Pool e as categorias continuam respeitando apenas os Pools liberados para sua conta.</div>}
 
     <section className="grid kpi-grid">
       <div className="card kpi-card"><div className="kpi-icon kpi-blue">A</div><div><div className="label">Total de ativos</div><div className="kpi">{data?.total ?? '-'}</div></div></div>

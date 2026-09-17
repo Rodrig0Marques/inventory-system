@@ -46,6 +46,7 @@ model User {
   audits    AuditLog[]
   poolAccess UserPool[]
   canGlobalAssetLookup Boolean @default(false)
+  canGlobalDashboardStats Boolean @default(false)
   tokenVersion Int @default(0)
 }
 

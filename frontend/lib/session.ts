@@ -7,6 +7,7 @@ export type SessionUser = {
   role: UserRole;
   active: boolean;
   canGlobalAssetLookup?: boolean;
+  canGlobalDashboardStats?: boolean;
   poolIds?: string[] | null;
 };
 

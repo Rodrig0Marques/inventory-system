@@ -21,7 +21,7 @@ declare module '@fastify/jwt' {
 }
 
 declare module 'fastify' {
-  interface FastifyRequest { poolIds: string[] | null; canGlobalAssetLookup: boolean; }
+  interface FastifyRequest { poolIds: string[] | null; canGlobalAssetLookup: boolean; canGlobalDashboardStats: boolean; }
   interface FastifyInstance {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     authorize: (roles: UserRole[]) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -33,6 +33,7 @@ export default fp(async (app) => {
 
   app.decorateRequest('poolIds', null);
   app.decorateRequest('canGlobalAssetLookup', false);
+  app.decorateRequest('canGlobalDashboardStats', false);
 
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -40,7 +41,7 @@ export default fp(async (app) => {
 
       const databaseUser = await prisma.user.findUnique({
         where: { id: request.user.sub },
-        select: { active: true, role: true, tokenVersion: true, canGlobalAssetLookup: true, poolAccess: { where: { pool: { active: true } }, select: { poolId: true } } },
+        select: { active: true, role: true, tokenVersion: true, canGlobalAssetLookup: true, canGlobalDashboardStats: true, poolAccess: { where: { pool: { active: true } }, select: { poolId: true } } },
       });
 
       if (!databaseUser?.active) {
@@ -55,6 +56,7 @@ export default fp(async (app) => {
       }
       request.poolIds = databaseUser.role === UserRole.ADMIN ? null : databaseUser.poolAccess.map(p => p.poolId);
       request.canGlobalAssetLookup = databaseUser.role === UserRole.ADMIN || databaseUser.canGlobalAssetLookup;
+      request.canGlobalDashboardStats = databaseUser.role === UserRole.ADMIN || databaseUser.canGlobalDashboardStats;
     } catch {
       if (!reply.sent) {
         reply.status(401).send({ message: 'Não autorizado.' });

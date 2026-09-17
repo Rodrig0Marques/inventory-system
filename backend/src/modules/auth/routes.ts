@@ -25,6 +25,7 @@ export async function authRoutes(app: FastifyInstance) {
       role: user.role,
       active: user.active,
       canGlobalAssetLookup: user.role === UserRole.ADMIN || user.canGlobalAssetLookup,
+      canGlobalDashboardStats: user.role === UserRole.ADMIN || user.canGlobalDashboardStats,
     };
 
     const token = app.jwt.sign(
@@ -38,13 +39,13 @@ export async function authRoutes(app: FastifyInstance) {
   app.get('/me', { onRequest: [app.authenticate] }, async (request, reply) => {
     const user = await prisma.user.findUnique({
       where: { id: request.user.sub },
-      select: { id: true, name: true, email: true, role: true, active: true, canGlobalAssetLookup: true },
+      select: { id: true, name: true, email: true, role: true, active: true, canGlobalAssetLookup: true, canGlobalDashboardStats: true },
     });
 
     if (!user || !user.active) {
       return reply.status(401).send({ message: 'Usuário inativo ou não encontrado.' });
     }
 
-    return { ...user, canGlobalAssetLookup: user.role === UserRole.ADMIN || user.canGlobalAssetLookup, poolIds: request.poolIds };
+    return { ...user, canGlobalAssetLookup: user.role === UserRole.ADMIN || user.canGlobalAssetLookup, canGlobalDashboardStats: user.role === UserRole.ADMIN || user.canGlobalDashboardStats, poolIds: request.poolIds };
   });
 }

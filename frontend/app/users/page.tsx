@@ -12,6 +12,7 @@ type UserRecord = {
   role: UserRole;
   active: boolean;
   canGlobalAssetLookup: boolean;
+  canGlobalDashboardStats: boolean;
   createdAt: string;
   updatedAt: string;
   poolAccess: Array<{ poolId: string; pool: { name: string; active: boolean } }>;
@@ -25,6 +26,7 @@ type UserForm = {
   role: UserRole;
   active: boolean;
   canGlobalAssetLookup: boolean;
+  canGlobalDashboardStats: boolean;
 };
 
 const emptyForm: UserForm = {
@@ -35,6 +37,7 @@ const emptyForm: UserForm = {
   role: 'VIEWER',
   active: true,
   canGlobalAssetLookup: false,
+  canGlobalDashboardStats: false,
 };
 
 export default function UsersPage() {
@@ -71,7 +74,7 @@ export default function UsersPage() {
 
   function startEdit(user: UserRecord) {
     setEditingId(user.id);
-    setForm({ name: user.name, email: user.email, password: '', role: user.role, active: user.active, canGlobalAssetLookup: user.canGlobalAssetLookup, poolIds: user.poolAccess.map(p => p.poolId) });
+    setForm({ name: user.name, email: user.email, password: '', role: user.role, active: user.active, canGlobalAssetLookup: user.canGlobalAssetLookup, canGlobalDashboardStats: user.canGlobalDashboardStats, poolIds: user.poolAccess.map(p => p.poolId) });
     setError('');
     setSuccess('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -93,6 +96,7 @@ export default function UsersPage() {
             role: form.role,
             active: form.active,
             canGlobalAssetLookup: form.canGlobalAssetLookup,
+            canGlobalDashboardStats: form.canGlobalDashboardStats,
             poolIds: form.poolIds,
           }),
         });
@@ -203,8 +207,10 @@ export default function UsersPage() {
             </>}
           </fieldset>
           <fieldset className="pool-permissions"><legend>Permissões adicionais</legend>
-            {form.role === 'ADMIN' ? <p>Administradores já podem consultar patrimônios em todos os Pools.</p> :
-              <label className="permission-check"><input type="checkbox" checked={form.canGlobalAssetLookup} onChange={e => setForm({ ...form, canGlobalAssetLookup: e.target.checked })} /><span><strong>Consulta global por patrimônio</strong><br /><small>Permite localizar um patrimônio exato em qualquer Pool, somente para consulta. A listagem normal continua restrita aos Pools liberados.</small></span></label>}
+            {form.role === 'ADMIN' ? <p>Administradores já possuem consulta global e visão global das contagens do Dashboard.</p> : <>
+              <label className="permission-check"><input type="checkbox" checked={form.canGlobalAssetLookup} onChange={e => setForm({ ...form, canGlobalAssetLookup: e.target.checked })} /><span><strong>Consulta global por patrimônio</strong><br /><small>Permite localizar um patrimônio exato em qualquer Pool, somente para consulta. A listagem normal continua restrita aos Pools liberados.</small></span></label>
+              <label className="permission-check"><input type="checkbox" checked={form.canGlobalDashboardStats} onChange={e => setForm({ ...form, canGlobalDashboardStats: e.target.checked })} /><span><strong>Totais globais no Dashboard</strong><br /><small>Exibe as quantidades totais, em uso e disponíveis considerando todos os Pools. Valor patrimonial, distribuição por Pool e categorias continuam restritos aos Pools liberados.</small></span></label>
+            </>}
           </fieldset>
           {editingId && <label className="toggle-row"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /><span><strong>Usuário ativo</strong><small>Usuários inativos não conseguem entrar no sistema.</small></span></label>}
 
@@ -221,7 +227,7 @@ export default function UsersPage() {
         <div className="permission-list">
           <div><span className="role-badge role-admin">Administrador</span><p>Acesso total, incluindo gerenciamento de usuários.</p></div>
           <div><span className="role-badge role-manager">Gestor</span><p>Gerencia ativos, pastas, estoque e importações somente nos Pools liberados. Pools e categorias globais são administrados pelo ADMIN.</p></div>
-          <div><span className="role-badge role-viewer">Visualizador</span><p>Consulta apenas os Pools liberados, sem fazer alterações. Opcionalmente, pode receber consulta global por patrimônio exato.</p></div>
+          <div><span className="role-badge role-viewer">Visualizador</span><p>Consulta apenas os Pools liberados, sem fazer alterações. Opcionalmente, pode receber consulta global por patrimônio e totais globais no Dashboard.</p></div>
         </div>
       </div>
     </section>
@@ -232,7 +238,7 @@ export default function UsersPage() {
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Usuário</th><th>Perfil</th><th>Pools permitidos</th><th>Consulta global</th><th>Status</th><th>Criado em</th><th className="align-right">Ações</th></tr></thead>
+          <thead><tr><th>Usuário</th><th>Perfil</th><th>Pools permitidos</th><th>Consulta global</th><th>Dashboard global</th><th>Status</th><th>Criado em</th><th className="align-right">Ações</th></tr></thead>
           <tbody>
             {items.map(user => {
               const isSelf = currentUser?.id === user.id;
@@ -241,6 +247,7 @@ export default function UsersPage() {
                 <td><span className={`role-badge role-${user.role.toLowerCase()}`}>{roleLabel(user.role)}</span></td>
                 <td>{user.role === 'ADMIN' ? 'Todos os Pools' : user.poolAccess.map(p => p.pool.name).join(', ') || 'Nenhum Pool liberado'}</td>
                 <td>{user.role === 'ADMIN' ? 'Sim (Admin)' : user.canGlobalAssetLookup ? 'Sim' : 'Não'}</td>
+                <td>{user.role === 'ADMIN' ? 'Sim (Admin)' : user.canGlobalDashboardStats ? 'Sim' : 'Não'}</td>
                 <td><span className={`status-badge ${user.active ? 'status-active' : 'status-inactive'}`}><span />{user.active ? 'Ativo' : 'Inativo'}</span></td>
                 <td>{new Date(user.createdAt).toLocaleDateString('pt-BR')}</td>
                 <td className="align-right"><div className="row-actions">
@@ -251,7 +258,7 @@ export default function UsersPage() {
                 </div></td>
               </tr>;
             })}
-            {items.length === 0 && <tr><td colSpan={7}><div className="empty-state">Nenhum usuário cadastrado.</div></td></tr>}
+            {items.length === 0 && <tr><td colSpan={8}><div className="empty-state">Nenhum usuário cadastrado.</div></td></tr>}
           </tbody>
         </table>
       </div>
