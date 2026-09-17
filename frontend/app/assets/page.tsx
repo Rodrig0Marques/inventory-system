@@ -186,7 +186,7 @@ export default function AssetsPage() {
     {canEdit && !hasStructure && <div className="notice notice-warning">Para cadastrar ativos, crie pelo menos um <Link href="/pools">pool</Link> e uma <Link href="/structure">categoria</Link>.</div>}
 
     {canGlobalLookup && <section className="card section-card">
-      <div className="section-heading"><div><h2>Consulta global de patrimônio</h2><p>Localize um patrimônio exato em qualquer Pool. Esta consulta não amplia sua listagem normal nem concede permissão de edição.</p></div></div>
+      <div className="section-heading"><div><h2>Pesquisa de patrimônio</h2><p>Localize um patrimônio exato em qualquer Pool. Esta consulta não amplia sua listagem normal nem concede permissão de edição.</p></div></div>
       <form className="toolbar search-toolbar" onSubmit={globalLookup}>
         <input value={globalPatrimony} onChange={e => { setGlobalPatrimony(e.target.value); setGlobalSearched(false); setGlobalError(''); }} placeholder="Digite o patrimônio exato, ex.: PAT-00125" maxLength={100} />
         <button className="secondary" disabled={globalSearching || !globalPatrimony.trim()}>{globalSearching ? 'Consultando...' : 'Consultar em todos os Pools'}</button>
