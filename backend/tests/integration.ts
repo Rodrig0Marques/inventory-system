@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import * as XLSX from 'xlsx';
 import { UserRole } from '@prisma/client';
+import { defaultPermissionsForRole } from '../src/utils/permissions.js';
 import { buildApp } from '../src/app.js';
 import { prisma } from '../src/plugins/prisma.js';
 
@@ -26,7 +27,18 @@ async function expect(method: 'GET'|'POST'|'PUT'|'DELETE', path: string, user: a
   const response = await req(method,path,user,payload); assert.equal(response.statusCode,code,response.body); return body(response);
 }
 async function makeUser(name: string, role: UserRole, pools: string[]) {
-  const user = await prisma.user.create({ data: { name, email: `${name}-${tag}@test.local`, password: await bcrypt.hash(password,10), role, poolAccess: { create: pools.map(poolId => ({ poolId })) } } });
+  const permissions = role === UserRole.ADMIN ? [] : defaultPermissionsForRole(role);
+  const user = await prisma.user.create({
+    data: {
+      name,
+      email: `${name}-${tag}@test.local`,
+      password: await bcrypt.hash(password, 10),
+      role,
+      permissionsInitialized: true,
+      permissions: { create: permissions.map(permission => ({ permission })) },
+      poolAccess: { create: pools.map(poolId => ({ poolId })) },
+    },
+  });
   return { ...user, token: app.jwt.sign({ sub: user.id, name: user.name, email: user.email, role: user.role, tokenVersion: user.tokenVersion }) };
 }
 async function makeProfile(name: string, available: number) {

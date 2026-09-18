@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { categoryPath, descendantIds } from '../../lib/inventory';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
-import { canManage, getSessionUser } from '../../lib/session';
+import { getSessionUser, hasPermission } from '../../lib/session';
 
 type Pool = { id: string; name: string };
 type Folder = {
@@ -29,7 +29,9 @@ export default function StructurePage() {
   const [pools, setPools] = useState<Pool[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [canAdmin, setCanAdmin] = useState(false);
+  const [canCreateCategory, setCanCreateCategory] = useState(false);
+  const [canEditCategory, setCanEditCategory] = useState(false);
+  const [canDeleteCategory, setCanDeleteCategory] = useState(false);
   const [categoryParent, setCategoryParent] = useState('');
   const [categoryName, setCategoryName] = useState('');
   const [categoryDescription, setCategoryDescription] = useState('');
@@ -39,7 +41,8 @@ export default function StructurePage() {
   const [parentId, setParentId] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [canEdit, setCanEdit] = useState(false);
+  const [canCreateFolder, setCanCreateFolder] = useState(false);
+  const [canDeleteFolder, setCanDeleteFolder] = useState(false);
 
   async function load() {
     const [poolData, folderData, categoryData, stockData] = await Promise.all([
@@ -55,8 +58,12 @@ export default function StructurePage() {
   }
 
   useEffect(() => {
-    setCanEdit(canManage(getSessionUser()?.role));
-    setCanAdmin(getSessionUser()?.role === 'ADMIN');
+    const session = getSessionUser();
+    setCanCreateCategory(hasPermission('CATEGORY_CREATE', session));
+    setCanEditCategory(hasPermission('CATEGORY_EDIT', session));
+    setCanDeleteCategory(hasPermission('CATEGORY_DELETE', session));
+    setCanCreateFolder(hasPermission('FOLDER_CREATE', session));
+    setCanDeleteFolder(hasPermission('FOLDER_DELETE', session));
     load().catch(() => setError('Não foi possível carregar a estrutura.'));
   }, []);
 
@@ -157,20 +164,20 @@ export default function StructurePage() {
     </div>
 
     {(error || success) && <div className={`notice ${error ? 'notice-error' : 'notice-success'}`}>{error || success}</div>}
-    {!canEdit && <div className="notice notice-info">Seu perfil é somente leitura. Você pode consultar categorias e pastas, mas não pode alterar a estrutura.</div>}
+    {!canCreateCategory && !canEditCategory && !canDeleteCategory && !canCreateFolder && !canDeleteFolder && <div className="notice notice-info">Você pode consultar categorias e pastas, mas não possui permissões para alterar a estrutura.</div>}
 
-    {canEdit && <section className="management-grid">
-      {canAdmin && <div className="card form-card">
+    {(canCreateCategory || canEditCategory || canCreateFolder) && <section className="management-grid">
+      {(canCreateCategory || (canEditCategory && !!editingCategoryId)) && <div className="card form-card">
         <div className="card-heading"><div className="card-icon">C</div><div><h2>{editingCategoryId ? 'Editar categoria' : 'Nova categoria'}</h2><p>{editingCategoryId ? 'Altere nome, descrição ou posição na hierarquia.' : 'Defina um novo tipo geral de patrimônio.'}</p></div></div>
         <form onSubmit={saveCategory} className="stack-form">
           <div className="form-field"><label>Categoria pai</label><select value={categoryParent} onChange={e => setCategoryParent(e.target.value)}><option value="">Raiz das categorias</option>{categoryParentOptions.map(c => <option key={c.id} value={c.id}>{categoryPath(categories,c.id)}</option>)}</select><div className="field-help">Exemplo: Memórias / Memória 8gb / 8gb 2666Ghz. Os nomes devem ser únicos no catálogo.</div></div>
           <div className="form-field"><label>Nome</label><input value={categoryName} onChange={e => setCategoryName(e.target.value)} placeholder="Ex.: Projetor, Veículo, Cadeira" required /></div>
           <div className="form-field"><label>Descrição</label><textarea rows={3} value={categoryDescription} onChange={e => setCategoryDescription(e.target.value)} placeholder="Opcional" /></div>
-          <div className="form-actions-row">{editingCategoryId && <button type="button" className="secondary" onClick={resetCategoryForm}>Cancelar</button>}<button className="primary">{editingCategoryId ? 'Salvar categoria' : 'Criar categoria'}</button></div>
+          <div className="form-actions-row">{editingCategoryId && <button type="button" className="secondary" onClick={resetCategoryForm}>Cancelar</button>}<button className="primary" disabled={editingCategoryId ? !canEditCategory : !canCreateCategory}>{editingCategoryId ? 'Salvar categoria' : 'Criar categoria'}</button></div>
         </form>
       </div>}
 
-      <div className="card form-card">
+      {canCreateFolder && <div className="card form-card">
         <div className="card-heading"><div className="card-icon">P</div><div><h2>Nova pasta</h2><p>Organize os ativos dentro de cada pool.</p></div></div>
         <form onSubmit={createFolder} className="stack-form">
           <div className="form-field"><label>Pool</label><select value={folderPool} onChange={e => { setFolderPool(e.target.value); setParentId(''); }} required><option value="" disabled>Selecione</option>{pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</select></div>
@@ -178,17 +185,17 @@ export default function StructurePage() {
           <div className="form-field"><label>Pasta pai</label><select value={parentId} onChange={e => setParentId(e.target.value)}><option value="">Raiz do pool</option>{availableParents.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div>
           <button className="primary full-button" disabled={!folderPool}>Criar pasta</button>
         </form>
-      </div>
+      </div>}
     </section>}
 
-    <div className="notice notice-info">As definições de categorias são compartilhadas e administradas pelo ADMIN. Quantidades, ativos e pastas respeitam os seus Pools permitidos.</div>
+    <div className="notice notice-info">Categorias são globais; pastas e ativos respeitam os Pools permitidos. As ações exibidas dependem das permissões adicionais do usuário.</div>
     <section className="card section-card">
       <div className="section-heading"><div><h2>Categorias</h2><p>Categorias em uso não podem ser excluídas até que os ativos sejam alterados ou removidos.</p></div></div>
       <div className="category-grid">
         {categories.map(category => <article className="category-item" key={category.id}>
           <div className="category-symbol">{category.name.slice(0, 1).toUpperCase()}</div>
-          <div className="category-content"><Link href={`/stock?categoryId=${category.id}`}><strong>{categoryPath(categories,category.id)}</strong></Link><span>{category._count.assets} ativo(s) direto(s) | Componentes: {category.total || 0} no total / {category.available || 0} disponíveis</span></div>
-          {canAdmin && <div className="row-actions"><button type="button" className="table-action" onClick={() => startEditCategory(category)} title="Editar categoria">Editar</button><button type="button" className="mini-delete" onClick={() => removeCategory(category)} title="Excluir categoria">Excluir</button></div>}
+          <div className="category-content"><strong>{categoryPath(categories,category.id)}</strong><span>{category._count.assets} ativo(s) direto(s) | Componentes: {category.total || 0} no total / {category.available || 0} disponíveis</span></div>
+          <div className="row-actions"><Link className="table-action" href={`/assets?categoryId=${encodeURIComponent(category.id)}`}>Ver ativos</Link><Link className="table-action" href={`/stock?categoryId=${encodeURIComponent(category.id)}`}>Ver componentes</Link>{canEditCategory && <button type="button" className="table-action" onClick={() => startEditCategory(category)} title="Editar categoria">Editar</button>}{canDeleteCategory && <button type="button" className="mini-delete" onClick={() => removeCategory(category)} title="Excluir categoria">Excluir</button>}</div>
         </article>)}
         {categories.length === 0 && <div className="empty-state">Nenhuma categoria cadastrada.</div>}
       </div>
@@ -198,7 +205,7 @@ export default function StructurePage() {
       <div className="section-heading"><div><h2>Pastas e subpastas</h2><p>Pastas com ativos ou subpastas precisam ser esvaziadas antes da exclusão.</p></div></div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Pool</th><th>Pasta</th><th>Pasta pai</th><th>Ativos</th><th>Subpastas</th>{canEdit && <th className="align-right">Ações</th>}</tr></thead>
+          <thead><tr><th>Pool</th><th>Pasta</th><th>Pasta pai</th><th>Ativos</th><th>Subpastas</th>{canDeleteFolder && <th className="align-right">Ações</th>}</tr></thead>
           <tbody>
             {folders.map(folder => <tr key={folder.id}>
               <td><span className="pool-badge">{folder.pool.name}</span></td>
@@ -206,9 +213,9 @@ export default function StructurePage() {
               <td>{folders.find(item => item.id === folder.parentId)?.name || 'Raiz'}</td>
               <td>{folder._count.assets}</td>
               <td>{folder._count.children}</td>
-              {canEdit && <td className="align-right"><button type="button" className="icon-danger" onClick={() => removeFolder(folder)}>Excluir</button></td>}
+              {canDeleteFolder && <td className="align-right"><button type="button" className="icon-danger" onClick={() => removeFolder(folder)}>Excluir</button></td>}
             </tr>)}
-            {folders.length === 0 && <tr><td colSpan={canEdit ? 6 : 5}><div className="empty-state">Nenhuma pasta cadastrada.</div></td></tr>}
+            {folders.length === 0 && <tr><td colSpan={canDeleteFolder ? 6 : 5}><div className="empty-state">Nenhuma pasta cadastrada.</div></td></tr>}
           </tbody>
         </table>
       </div>

@@ -1,11 +1,46 @@
 export type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER';
 
+export type PermissionCode =
+  | 'GLOBAL_ASSET_LOOKUP'
+  | 'GLOBAL_DASHBOARD_STATS'
+  | 'ASSET_CREATE'
+  | 'ASSET_EDIT'
+  | 'ASSET_DELETE'
+  | 'ASSET_MOVE'
+  | 'IMPORT_ASSETS'
+  | 'POOL_CREATE'
+  | 'POOL_EDIT'
+  | 'POOL_DELETE'
+  | 'CATEGORY_CREATE'
+  | 'CATEGORY_EDIT'
+  | 'CATEGORY_DELETE'
+  | 'FOLDER_CREATE'
+  | 'FOLDER_DELETE'
+  | 'STOCK_MANAGE';
+
+export const managerDefaultPermissions: PermissionCode[] = [
+  'ASSET_CREATE',
+  'ASSET_EDIT',
+  'ASSET_DELETE',
+  'ASSET_MOVE',
+  'IMPORT_ASSETS',
+  'FOLDER_CREATE',
+  'FOLDER_DELETE',
+  'STOCK_MANAGE',
+];
+
+export function defaultPermissionsForRole(role: UserRole): PermissionCode[] {
+  if (role === 'MANAGER') return [...managerDefaultPermissions];
+  return [];
+}
+
 export type SessionUser = {
   id: string;
   name: string;
   email: string;
   role: UserRole;
   active: boolean;
+  permissions?: PermissionCode[];
   canGlobalAssetLookup?: boolean;
   canGlobalDashboardStats?: boolean;
   poolIds?: string[] | null;
@@ -47,6 +82,11 @@ export function clearSession() {
   localStorage.removeItem(USER_KEY);
 }
 
+export function hasPermission(permission: PermissionCode, user: SessionUser | null = getSessionUser()) {
+  return user?.role === 'ADMIN' || Boolean(user?.permissions?.includes(permission));
+}
+
+// Compatibilidade com telas ainda baseadas no perfil. Novas ações devem usar hasPermission.
 export function canManage(role?: UserRole | null) {
   return role === 'ADMIN' || role === 'MANAGER';
 }

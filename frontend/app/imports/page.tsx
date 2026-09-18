@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { api, getToken } from '../../lib/api';
-import { canManage, getSessionUser } from '../../lib/session';
+import { getSessionUser, hasPermission } from '../../lib/session';
 
 type Job = {
   id: string;
@@ -50,7 +50,7 @@ export default function ImportsPage() {
   }
 
   useEffect(() => {
-    setCanEdit(canManage(getSessionUser()?.role));
+    setCanEdit(hasPermission('IMPORT_ASSETS', getSessionUser()));
     load().catch(() => setError('Não foi possível carregar as importações.'));
   }, []);
 
@@ -157,7 +157,7 @@ export default function ImportsPage() {
     </div>
 
     {(error || message) && <div className={`notice ${error ? 'notice-error' : 'notice-success'}`}>{error || message}</div>}
-    {!canEdit && <div className="notice notice-info">Seu perfil é somente leitura. O histórico continua disponível, mas novas importações são restritas a gestores e administradores.</div>}
+    {!canEdit && <div className="notice notice-info">O histórico continua disponível, mas sua conta não possui a permissão adicional para importar ativos.</div>}
 
     {canEdit && <section className="import-layout">
       <div className="card form-card">

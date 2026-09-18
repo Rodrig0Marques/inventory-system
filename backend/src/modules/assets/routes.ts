@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { AssetStatus, Prisma, UserRole } from '@prisma/client';
+import { AssetStatus, PermissionCode, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../plugins/prisma.js';
 import { audit } from '../../utils/audit.js';
 import { fail, poolScope, requireAsset, writablePool, validateAssetLinks } from '../../utils/access.js';
 import { serial, operation } from '../../utils/transaction.js';
+import { hasPermission } from '../../utils/permissions.js';
 import { attachComponents, componentsSchema, ensureFolderPath } from '../stock/service.js';
 
 const optionalText = z.string().trim().max(4000).optional().nullable();
@@ -30,7 +31,10 @@ async function saveCustom(tx: Prisma.TransactionClient, id: string, categoryId: 
 
 export async function assetRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
-  const write = { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) };
+  const createPermission = { preHandler: app.requirePermission(PermissionCode.ASSET_CREATE) };
+  const editPermission = { preHandler: app.requirePermission(PermissionCode.ASSET_EDIT) };
+  const deletePermission = { preHandler: app.requirePermission(PermissionCode.ASSET_DELETE) };
+  const movePermission = { preHandler: app.requirePermission(PermissionCode.ASSET_MOVE) };
 
   app.get('/summary', async request => {
     // Os quatro indicadores principais do Dashboard podem ser globais para
@@ -81,117 +85,51 @@ export async function assetRoutes(app: FastifyInstance) {
   });
 
   app.get('/global-lookup', async request => {
-  if (!request.canGlobalAssetLookup) {
-    fail(
-      403,
-      'Você não possui permissão para consultar patrimônios fora dos seus Pools.'
-    );
-  }
+    if (!request.canGlobalAssetLookup) fail(403, 'Você não possui permissão para consultar patrimônios fora dos seus Pools.');
 
-  const { patrimony } = z.object({
-    patrimony: z
-      .string()
-      .trim()
-      .min(1, 'Informe pelo menos um patrimônio.')
-      .max(5000),
-  }).parse(request.query);
+    const { patrimony } = z.object({
+      patrimony: z.string().trim().min(1, 'Informe pelo menos um patrimônio.').max(5000),
+    }).parse(request.query);
 
-  const patrimonies = [
-    ...new Set(
-      patrimony
-        .split(/[\n\r,;]+/)
-        .map(value => value.trim())
-        .filter(Boolean)
-    ),
-  ];
+    const uniquePatrimonies = new Map<string, string>();
+    for (const value of patrimony.split(/[\n\r,;]+/)) {
+      const trimmed = value.trim();
+      if (trimmed) uniquePatrimonies.set(trimmed.toLocaleLowerCase(), trimmed);
+    }
+    const patrimonies = [...uniquePatrimonies.values()];
 
-  if (patrimonies.length === 0) {
-    fail(400, 'Informe pelo menos um patrimônio.');
-  }
+    if (!patrimonies.length) fail(400, 'Informe pelo menos um patrimônio.');
+    if (patrimonies.length > 50) fail(400, 'É permitido consultar no máximo 50 patrimônios por vez.');
 
-  if (patrimonies.length > 50) {
-    fail(400, 'É permitido consultar no máximo 50 patrimônios por vez.');
-  }
-
-  const items = await prisma.asset.findMany({
-    where: {
-      OR: patrimonies.map(patrimony => ({
-        patrimonyNumber: {
-          equals: patrimony,
-          mode: 'insensitive',
-        },
-      })),
-    },
-
-    select: {
-      id: true,
-      patrimonyNumber: true,
-      name: true,
-      description: true,
-      status: true,
-      manufacturer: true,
-      model: true,
-      location: true,
-      responsible: true,
-
-      pool: {
-        select: {
-          id: true,
-          name: true,
-        },
+    // Busca propositalmente exata: permite localizar códigos conhecidos em qualquer Pool
+    // sem transformar a permissão em uma listagem global do inventário.
+    const items = await prisma.asset.findMany({
+      where: {
+        OR: patrimonies.map(value => ({ patrimonyNumber: { equals: value, mode: 'insensitive' } })),
       },
-
-      category: {
-        select: {
-          id: true,
-          name: true,
-        },
+      select: {
+        id: true, patrimonyNumber: true, name: true, description: true, status: true,
+        manufacturer: true, model: true, location: true, responsible: true,
+        pool: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+        folder: { select: { id: true, name: true } },
       },
+      orderBy: { patrimonyNumber: 'asc' },
+      take: 50,
+    });
 
-      folder: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
+    const found = new Set(items.map(item => item.patrimonyNumber.toLocaleLowerCase()));
+    const notFound = patrimonies.filter(value => !found.has(value.toLocaleLowerCase()));
 
-    orderBy: {
-      patrimonyNumber: 'asc',
-    },
-
-    take: 50,
-  });
-
-  const found = new Set(
-    items.map(item => item.patrimonyNumber.toLocaleLowerCase())
-  );
-
-  const notFound = patrimonies.filter(
-    patrimony => !found.has(patrimony.toLocaleLowerCase())
-  );
-
-  await audit(
-    request,
-    'GLOBAL_ASSET_LOOKUP',
-    'Asset',
-    undefined,
-    undefined,
-    {
+    await audit(request, 'GLOBAL_ASSET_LOOKUP', 'Asset', undefined, undefined, {
       patrimonies,
       requestedCount: patrimonies.length,
       resultCount: items.length,
       notFound,
-    }
-  );
+    });
 
-  return {
-    items,
-    requestedCount: patrimonies.length,
-    resultCount: items.length,
-    notFound,
-  };
-});
+    return { items, requestedCount: patrimonies.length, resultCount: items.length, notFound };
+  });
 
   app.get('/:id', async request => {
     const { id } = idSchema.parse(request.params);
@@ -203,7 +141,7 @@ export async function assetRoutes(app: FastifyInstance) {
       (!m.fromPoolId || request.poolIds!.includes(m.fromPoolId)) && (!m.toPoolId || request.poolIds!.includes(m.toPoolId))) };
   });
 
-  app.post('/', write, async (request, reply) => {
+  app.post('/', createPermission, async (request, reply) => {
     const data = assetSchema.parse(request.body);
     const { customValues, purchaseDate, purchasePrice, ...base } = data;
     const asset = await serial(async tx => {
@@ -216,7 +154,7 @@ export async function assetRoutes(app: FastifyInstance) {
     return reply.status(201).send(asset);
   });
 
-  app.post('/batch', write, async (request, reply) => {
+  app.post('/batch', createPermission, async (request, reply) => {
     const body = z.object({
       requestId: z.string().uuid(), poolId: z.string().min(1), categoryId: z.string().min(1),
       manufacturer: optionalText, model: optionalText, location: optionalText, responsible: optionalText,
@@ -224,6 +162,12 @@ export async function assetRoutes(app: FastifyInstance) {
       assets: z.array(z.object({ patrimonyNumber: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(200), folderPath: z.string().trim().max(1000).optional() })).min(1).max(200),
       components: componentsSchema.default([]),
     }).parse(request.body);
+    if (body.components.length && !hasPermission(request, PermissionCode.STOCK_MANAGE)) {
+      fail(403, 'Você não possui permissão para movimentar estoque ou associar componentes.');
+    }
+    if ((body.folderPrefix || body.assets.some(asset => asset.folderPath)) && !hasPermission(request, PermissionCode.FOLDER_CREATE)) {
+      fail(403, 'Você não possui permissão para criar ou reutilizar caminhos de pastas no cadastro em lote.');
+    }
     const codes = body.assets.map(a => a.patrimonyNumber.toLocaleLowerCase());
     if (new Set(codes).size !== codes.length) fail(400, 'O lote possui patrimônios repetidos.');
     const result = await operation(request, body.requestId, 'CREATE_ASSET_BATCH', body, async tx => { await writablePool(request, body.poolId, tx); }, async tx => {
@@ -254,6 +198,7 @@ export async function assetRoutes(app: FastifyInstance) {
       const targetPool = data.poolId ?? previous.poolId;
       await writablePool(request, targetPool, tx);
       const changesPool = targetPool !== previous.poolId;
+      if (changesPool && !hasPermission(request, PermissionCode.ASSET_MOVE)) fail(403, 'Você não possui permissão para movimentar ativos entre Pools.');
       const effective = { ...previous, ...data, poolId: targetPool,
         folderId: changesPool && data.folderId === undefined ? null : data.folderId === undefined ? previous.folderId : data.folderId,
         assetTypeId: data.categoryId && data.categoryId !== previous.categoryId && data.assetTypeId === undefined ? null : data.assetTypeId === undefined ? previous.assetTypeId : data.assetTypeId };
@@ -276,13 +221,13 @@ export async function assetRoutes(app: FastifyInstance) {
     });
   }
 
-  app.put('/:id', write, async request => update(request, idSchema.parse(request.params).id, assetSchema.partial().parse(request.body)));
-  app.post('/:id/move', write, async request => {
+  app.put('/:id', editPermission, async request => update(request, idSchema.parse(request.params).id, assetSchema.partial().parse(request.body)));
+  app.post('/:id/move', movePermission, async request => {
     const body = z.object({ poolId: z.string().optional(), folderId: z.string().optional().nullable(), location: optionalText, responsible: optionalText, notes: optionalText }).parse(request.body);
     const { notes, ...data } = body;
     return update(request, idSchema.parse(request.params).id, data, notes ?? undefined);
   });
-  app.delete('/:id', write, async request => {
+  app.delete('/:id', deletePermission, async request => {
     const { id } = idSchema.parse(request.params);
     return serial(async tx => {
       const previous = await requireAsset(request, id, tx); await writablePool(request, previous.poolId, tx);

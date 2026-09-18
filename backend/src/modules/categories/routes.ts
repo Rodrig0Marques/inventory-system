@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { CustomFieldType, UserRole } from '@prisma/client';
+import { CustomFieldType, PermissionCode } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../plugins/prisma.js';
 import { audit } from '../../utils/audit.js';
@@ -17,7 +17,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     orderBy: { name: 'asc' },
   }));
 
-  app.post('/', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
+  app.post('/', { preHandler: app.requirePermission(PermissionCode.CATEGORY_CREATE) }, async (request, reply) => {
     const data = z.object({
       name: z.string().trim().min(1),
       description: z.string().trim().optional().nullable(),
@@ -33,7 +33,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     return reply.status(201).send(result);
   });
 
-  app.put('/:id', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
+  app.put('/:id', { preHandler: app.requirePermission(PermissionCode.CATEGORY_EDIT) }, async (request, reply) => {
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
     const data = z.object({
       name: z.string().trim().min(1).max(200).optional(),
@@ -66,7 +66,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  app.delete('/:id', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
+  app.delete('/:id', { preHandler: app.requirePermission(PermissionCode.CATEGORY_DELETE) }, async (request, reply) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const category = await prisma.category.findUnique({
       where: { id },
@@ -86,7 +86,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     return reply.send({ message: 'Categoria excluída com sucesso' });
   });
 
-  app.post('/:id/types', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
+  app.post('/:id/types', { preHandler: app.requirePermission(PermissionCode.CATEGORY_EDIT) }, async (request, reply) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const { name } = z.object({ name: z.string().trim().min(1) }).parse(request.body);
     const result = await prisma.assetType.create({ data: { categoryId: id, name } });
@@ -94,7 +94,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     return reply.status(201).send(result);
   });
 
-  app.post('/:id/fields', { preHandler: app.authorize([UserRole.ADMIN]) }, async (request, reply) => {
+  app.post('/:id/fields', { preHandler: app.requirePermission(PermissionCode.CATEGORY_EDIT) }, async (request, reply) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const data = z.object({
       name: z.string().trim().min(1),

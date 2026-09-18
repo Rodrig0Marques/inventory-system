@@ -32,11 +32,34 @@ function NavIcon({ name }: { name: IconName }) {
   return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
+type Theme = 'light' | 'dark';
+const THEME_KEY = 'inventory_theme';
+
+function ThemeIcon({ theme }: { theme: Theme }) {
+  if (theme === 'dark') {
+    return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>;
+  }
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" /></svg>;
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [theme, setTheme] = useState<Theme>('light');
+
+  useEffect(() => {
+    const current = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    setTheme(current);
+  }, []);
+
+  function toggleTheme() {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem(THEME_KEY, next);
+    setTheme(next);
+  }
 
   useEffect(() => {
     if (pathname === '/login') {
@@ -75,7 +98,19 @@ export function Shell({ children }: { children: ReactNode }) {
       });
   }, [pathname, router]);
 
-  if (pathname === '/login') return <>{children}</>;
+  if (pathname === '/login') return <>
+    <button
+      type="button"
+      className="theme-toggle theme-toggle-login"
+      onClick={toggleTheme}
+      aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+      title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+    >
+      <ThemeIcon theme={theme} />
+      <span>{theme === 'dark' ? 'Claro' : 'Escuro'}</span>
+    </button>
+    {children}
+  </>;
   if (!ready) return <main className="center"><div className="loader" /></main>;
 
   const visibleLinks = links.filter(item => !item.roles || (user && item.roles.includes(user.role)));
@@ -84,11 +119,20 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-wrap">
-          <div className="brand-mark">C</div>
+          <div className="brand-mark">I</div>
           <div>
             <div className="brand">Inventário</div>
             <div className="sidebar-muted">Gestão patrimonial</div>
           </div>
+          <button
+            type="button"
+            className="theme-toggle sidebar-theme-toggle"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+            title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+          >
+            <ThemeIcon theme={theme} />
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -121,9 +165,21 @@ export function Shell({ children }: { children: ReactNode }) {
             <strong>Inventário corporativo</strong>
             <span>Controle centralizado de ativos</span>
           </div>
-          <div className="topbar-user">
-            <div className="topbar-avatar">{user?.name?.slice(0, 1).toUpperCase() || 'U'}</div>
-            <div><strong>{user?.name || 'Usuário'}</strong><span>{user ? roleLabel(user.role) : ''}</span></div>
+          <div className="topbar-actions">
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+              title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+            >
+              <ThemeIcon theme={theme} />
+              <span>{theme === 'dark' ? 'Claro' : 'Escuro'}</span>
+            </button>
+            <div className="topbar-user">
+              <div className="topbar-avatar">{user?.name?.slice(0, 1).toUpperCase() || 'U'}</div>
+              <div><strong>{user?.name || 'Usuário'}</strong><span>{user ? roleLabel(user.role) : ''}</span></div>
+            </div>
           </div>
         </header>
         <div className="content">{children}</div>

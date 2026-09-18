@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api } from '../../../../lib/api';
 import { categoryPath } from '../../../../lib/inventory';
-import { canManage, getSessionUser } from '../../../../lib/session';
+import { getSessionUser, hasPermission } from '../../../../lib/session';
 
 type AssetStatus =
   | 'AVAILABLE'
@@ -96,12 +96,15 @@ export default function EditAssetPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [canMove, setCanMove] = useState(false);
 
   useEffect(() => {
-    if (!canManage(getSessionUser()?.role)) {
+    const session = getSessionUser();
+    if (!hasPermission('ASSET_EDIT', session)) {
       router.replace(`/assets/${id}`);
       return;
     }
+    setCanMove(hasPermission('ASSET_MOVE', session));
 
     Promise.all([
       api<Asset>(`/assets/${id}`),
@@ -185,11 +188,11 @@ export default function EditAssetPage() {
       <form onSubmit={save} className="form-grid asset-form">
         <div className="form-field">
           <label>Pool *</label>
-          <select required value={form.poolId} onChange={e => setForm({ ...form, poolId: e.target.value, folderId: '' })}>
+          <select required disabled={!canMove} value={form.poolId} onChange={e => setForm({ ...form, poolId: e.target.value, folderId: '' })}>
             <option value="">Selecione</option>
             {pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}{pool.active === false ? ' (inativo)' : ''}</option>)}
           </select>
-          <div className="field-help">Ativos com componentes instalados não podem ser transferidos de Pool até os componentes serem devolvidos ou baixados.</div>
+          <div className="field-help">{canMove ? 'Ativos com componentes instalados não podem ser transferidos de Pool até os componentes serem devolvidos ou baixados.' : 'Sua conta pode editar o ativo, mas não possui permissão para movimentá-lo entre Pools.'}</div>
         </div>
 
         <div className="form-field">

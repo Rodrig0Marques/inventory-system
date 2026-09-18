@@ -1,14 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
-import { canManage, getSessionUser } from '../../lib/session';
+import { getSessionUser, hasPermission } from '../../lib/session';
 import { categoryPath, descendantIds, requestId, type CategoryNode } from '../../lib/inventory';
 
 type Pool = { id: string; name: string; active: boolean };
 type Totals = { total: number; available: number; installed: number };
-type Category = CategoryNode & Totals & { profileCount: number; assetCount: number; description?: string | null };
+type Category = CategoryNode & Totals & { profileCount: number; description?: string | null };
 type Profile = Totals & { id: string; name: string; poolId: string; categoryId: string; description?: string; specifications?: string; manufacturer?: string; model?: string; pool: Pool };
 type Catalog = { profiles: Profile[]; categories: Category[]; totals: Totals };
 type Asset = { id: string; name: string; patrimonyNumber: string; poolId: string };
@@ -37,13 +37,12 @@ function Components({ value, onChange, profiles, count }: { value: Part[]; onCha
 export default function StockPage() {
   const [pools, setPools] = useState<Pool[]>([]), [poolId, setPoolId] = useState('');
   const [catalog, setCatalog] = useState<Catalog>(initial), [categoryId, setCategoryId] = useState('');
-  const [tab, setTab] = useState<'catalog' | 'assign' | 'batch' | 'movements'>('catalog');
+  const [tab, setTab] = useState<'catalog' | 'assign' | 'movements'>('catalog');
   const [error, setError] = useState(''), [success, setSuccess] = useState(''), [busy, setBusy] = useState(false);
   const [canEdit, setCanEdit] = useState(false), [canAdmin, setCanAdmin] = useState(false), [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(blankProfile), [editing, setEditing] = useState(''), [showProfile, setShowProfile] = useState(false);
   const [parts, setParts] = useState<Part[]>([]), [selected, setSelected] = useState<Record<string, Asset>>({});
   const [assets, setAssets] = useState<Asset[]>([]), [assetTotal, setAssetTotal] = useState(0), [assetPage, setAssetPage] = useState(1), [search, setSearch] = useState('');
-  const [batchText, setBatchText] = useState(''), [batch, setBatch] = useState({ categoryId: '', folderPrefix: '', manufacturer: '', model: '', location: '', responsible: '' });
   const [adjustment, setAdjustment] = useState<{ profile: Profile; type: 'RECEIPT' | 'WITHDRAWAL' } | null>(null);
   const [categoryEditor, setCategoryEditor] = useState<{ id: string; name: string; parentId: string; description: string } | null>(null);
   const [quantity, setQuantity] = useState(1), [notes, setNotes] = useState('');
@@ -55,9 +54,9 @@ export default function StockPage() {
     setCatalog(data);
   }, [poolId]);
   useEffect(() => {
-    const role = getSessionUser()?.role;
-    setCanEdit(canManage(role));
-    setCanAdmin(role === 'ADMIN');
+    const session = getSessionUser();
+    setCanEdit(hasPermission('STOCK_MANAGE', session));
+    setCanAdmin(hasPermission('CATEGORY_EDIT', session));
     api<Pool[]>('/pools').then(setPools).catch(e => setError(e.message));
     const q = new URLSearchParams(window.location.search);
     if (q.get('poolId')) setPoolId(q.get('poolId')!);
@@ -82,7 +81,6 @@ export default function StockPage() {
   const visibleProfiles = catalog.profiles.filter(p => !scope || scope.has(p.categoryId));
   const children = catalog.categories.filter(c => (c.parentId || '') === categoryId);
   const currentCategory = catalog.categories.find(c => c.id === categoryId);
-  const batchRows = useMemo(() => batchText.split(/\r?\n/).map(s => s.trim()).filter(Boolean).filter((s,i) => !(i === 0 && /^patrimonio\s*;/i.test(s))).map(line => { const [patrimonyNumber = '', name = '', folderPath = '', ...extra] = line.split(';').map(s => s.trim()); return { patrimonyNumber, name, folderPath, invalid: !patrimonyNumber || !name || extra.length > 0 }; }), [batchText]);
 
   async function post(path: string, data: object) {
     const signature = JSON.stringify([path, data]);
@@ -133,25 +131,21 @@ export default function StockPage() {
     if (!window.confirm(`Associar os componentes a ${count} equipamento(s)? Confira a origem de cada unidade antes de continuar.`)) return;
     await run(async () => { await post('/stock/assign', { poolId, assetIds: Object.keys(selected), components: parts }); setSelected({}); setParts([]); setSuccess('Componentes associados; saldos atualizados.'); });
   }
-  async function createBatch(e: FormEvent) {
-    e.preventDefault();
-    if (!window.confirm(`Cadastrar ${batchRows.length} ativo(s), criar/reutilizar as pastas e associar os componentes? Uma falha cancela o lote inteiro.`)) return;
-    await run(async () => { const r = await post('/assets/batch', { ...batch, poolId, assets: batchRows.map(({ invalid, ...row }) => row), components: parts }); setBatchText(''); setParts([]); setSuccess(r.message || 'Lote cadastrado.'); });
-  }
+
 
   return <>
-    <div className="page-head"><div><div className="eyebrow">Inventário por setor</div><h1>Estoque e componentes</h1><div className="page-description">Especificações reutilizáveis, unidades disponíveis e componentes instalados.</div></div>
+    <div className="page-head"><div><div className="eyebrow">Componentes por setor</div><h1>Estoque e componentes</h1><div className="page-description">Gerencie peças, componentes, saldos disponíveis e unidades instaladas. Patrimônios principais ficam em Ativos.</div></div>
       <Field label="Pool / setor"><select value={poolId} onChange={e => changePool(e.target.value)}><option value="">Todos os meus Pools</option>{pools.map(p => <option key={p.id} value={p.id}>{p.name}{p.active ? '' : ' (inativo)'}</option>)}</select></Field></div>
     {(error || success) && <div role="status" className={`notice ${error ? 'notice-error' : 'notice-success'}`}>{error || success}</div>}
     {!pools.length && !loading && <div className="notice notice-info">Nenhum Pool disponível. Solicite ao administrador a liberação dos seus Pools em Usuários.</div>}
     <div className="stock-kpis">{[['Total de componentes', catalog.totals.total], ['Disponíveis em estoque', catalog.totals.available], ['Instalados em ativos', catalog.totals.installed]].map(([label, value]) => <div className="card stock-kpi" key={label}><span>{label}</span><strong>{number(Number(value))}</strong></div>)}</div>
     <p className="field-help">Total = disponíveis + instalados. Computadores e outros ativos principais aparecem separadamente; um perfil técnico não entra na contagem.</p>
-    <div className="stock-tabs" role="tablist">{(['catalog','assign','batch','movements'] as const).filter(t => canEdit || !['assign','batch'].includes(t)).map(t => <button role="tab" aria-selected={tab === t} type="button" className={tab === t ? 'primary' : 'secondary'} key={t} onClick={() => { setTab(t); setError(''); }}>{({ catalog: 'Catálogo', assign: 'Associar a ativos', batch: 'Cadastro em lote', movements: 'Movimentações' })[t]}</button>)}</div>
+    <div className="stock-tabs" role="tablist">{(['catalog','assign','movements'] as const).filter(t => canEdit || t !== 'assign').map(t => <button role="tab" aria-selected={tab === t} type="button" className={tab === t ? 'primary' : 'secondary'} key={t} onClick={() => { setTab(t); setError(''); }}>{({ catalog: 'Catálogo', assign: 'Associar a ativos', movements: 'Movimentações' })[t]}</button>)}</div>
 
     {tab === 'catalog' && <>
       <section className="card section-card"><div className="section-heading"><div><h2>Categorias e especificações</h2><p>Clique para navegar pelos níveis e conferir os totais acumulados.</p></div><Link className="table-action" href="/structure">Gerenciar estrutura</Link></div>
         <div className="stock-breadcrumb"><button type="button" onClick={() => setCategoryId('')}>Todas as categorias</button>{currentCategory && <><span>/ {categoryPath(catalog.categories, categoryId)}</span><button type="button" onClick={() => setCategoryId(currentCategory.parentId || '')}>Voltar um nível</button></>}</div>
-        <div className="stock-category-grid">{children.map(c => <button type="button" className="stock-category" key={c.id} onClick={() => setCategoryId(c.id)}><strong>{c.name}</strong><span>Componentes: <b>{number(c.total)}</b></span><span>Disponíveis: <b>{number(c.available)}</b> | Instalados: <b>{number(c.installed)}</b></span><small>Ativos principais: {number(c.assetCount)} | Perfis: {c.profileCount}</small></button>)}</div>
+        <div className="stock-category-grid">{children.map(c => <button type="button" className="stock-category" key={c.id} onClick={() => setCategoryId(c.id)}><strong>{c.name}</strong><span>Componentes: <b>{number(c.total)}</b></span><span>Disponíveis: <b>{number(c.available)}</b> | Instalados: <b>{number(c.installed)}</b></span><small>Perfis de componentes: {c.profileCount}</small></button>)}</div>
         {currentCategory && <div className="notice notice-info">{currentCategory.name}: {number(currentCategory.total)} componentes no total, {number(currentCategory.available)} disponíveis e {number(currentCategory.installed)} instalados, incluindo subcategorias.</div>}
       </section>
       <section className="card section-card"><div className="section-heading"><div><h2>Perfis de itens</h2><p>Crie, por exemplo, um perfil de memória com capacidade e especificação técnica.</p></div>{canEdit && <button type="button" disabled={!poolId} onClick={() => { setEditing(''); setProfile({ ...blankProfile, categoryId }); setShowProfile(!showProfile); }}>+ Novo perfil</button>}</div>
@@ -182,18 +176,6 @@ export default function StockPage() {
       </form>}
     </section>}
 
-    {tab === 'batch' && canEdit && <section className="card section-card"><div className="section-heading"><div><h2>Cadastrar equipamentos em lote</h2><p>Até 200 equipamentos com a mesma configuração. Pastas e subpastas são criadas ou reutilizadas dentro do Pool.</p></div></div>
-      {!poolId ? <div className="notice notice-info">Selecione o Pool de destino no topo.</div> : <form onSubmit={createBatch}>
-        <div className="stock-form-grid"><Field label="Categoria dos equipamentos *"><select required value={batch.categoryId} onChange={e => setBatch({ ...batch, categoryId: e.target.value })}><option value="">Selecione</option>{catalog.categories.map(c => <option key={c.id} value={c.id}>{categoryPath(catalog.categories,c.id)}</option>)}</select></Field><Field label="Pasta base (opcional)"><input value={batch.folderPrefix} onChange={e => setBatch({ ...batch, folderPrefix: e.target.value })} placeholder="Computadores / Setor cadastro" /></Field>
-          <Field label="Fabricante"><input value={batch.manufacturer} onChange={e => setBatch({ ...batch, manufacturer: e.target.value })} /></Field><Field label="Modelo"><input value={batch.model} onChange={e => setBatch({ ...batch, model: e.target.value })} /></Field><Field label="Localização"><input value={batch.location} onChange={e => setBatch({ ...batch, location: e.target.value })} /></Field><Field label="Responsável"><input value={batch.responsible} onChange={e => setBatch({ ...batch, responsible: e.target.value })} /></Field></div>
-        <Field label="Uma linha por equipamento: patrimonio;nome;pasta"><textarea className="batch-input" rows={7} value={batchText} onChange={e => setBatchText(e.target.value)} placeholder={'PC-001;Computador 01;Sala A\nPC-002;Computador 02;Sala A\nPC-003;Computador 03;Sala B / Mesa 1'} required /></Field>
-        <p className="field-help">A terceira coluna é opcional. Use / para subpastas; não use ; dentro de um nome. Patrimônios existentes não são atualizados por este lote.</p>
-        {batchRows.length > 0 && <div className="table-wrap batch-preview"><table><thead><tr><th>Patrimônio</th><th>Nome</th><th>Pasta resultante</th><th>Leitura</th></tr></thead><tbody>{batchRows.slice(0,200).map((r,i) => <tr key={i}><td>{r.patrimonyNumber}</td><td>{r.name}</td><td>{[batch.folderPrefix,r.folderPath].filter(Boolean).join(' / ') || 'Raiz'}</td><td>{r.invalid ? 'Corrigir linha' : 'OK'}</td></tr>)}</tbody></table></div>}
-        <Components value={parts} onChange={setParts} profiles={catalog.profiles} count={batchRows.length} />
-        <div className="notice notice-info">Nenhum item do lote será gravado se houver patrimônio duplicado, pasta inválida, falta de permissão ou estoque insuficiente. Associar componentes é opcional.</div>
-        <div className="form-actions-row"><button disabled={busy || !batchRows.length || batchRows.length > 200 || batchRows.some(r => r.invalid)}>{busy ? 'Cadastrando...' : `Cadastrar ${batchRows.length} ativo(s)`}</button></div>
-      </form>}
-    </section>}
 
     {tab === 'movements' && <section className="card section-card"><div className="section-heading"><div><h2>Movimentações de componentes</h2><p>Histórico dos Pools aos quais você tem acesso.</p></div></div><div className="table-wrap"><table><thead><tr><th>Data</th><th>Pool</th><th>Perfil</th><th>Operação</th><th>Quantidade</th><th>Disponível após</th><th>Observação</th></tr></thead><tbody>{movements.map(m => <tr key={m.id}><td>{new Date(m.createdAt).toLocaleString('pt-BR')}</td><td>{m.profile.pool.name}</td><td>{m.profile.name}</td><td>{labels[m.type] || m.type}</td><td>{m.quantity}</td><td>{m.availableAfter}</td><td>{m.notes || '-'}</td></tr>)}{!movements.length && <tr><td colSpan={7}><div className="empty-state">Nenhuma movimentação.</div></td></tr>}</tbody></table></div><div className="stock-pagination"><button className="secondary" disabled={movementPage === 1} onClick={() => setMovementPage(movementPage - 1)}>Anterior</button><span>Página {movementPage} | {movementTotal} registros</span><button className="secondary" disabled={movementPage * 50 >= movementTotal} onClick={() => setMovementPage(movementPage + 1)}>Próxima</button></div></section>}
 

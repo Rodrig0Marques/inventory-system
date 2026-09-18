@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { Prisma, UserRole } from '@prisma/client';
+import { PermissionCode, Prisma } from '@prisma/client';
 import { XMLParser } from 'fast-xml-parser';
 import * as XLSX from 'xlsx';
 import { prisma } from '../../plugins/prisma.js';
@@ -284,7 +284,7 @@ export async function importRoutes(app: FastifyInstance) {
       .send(file);
   });
 
-  app.post('/assets/preview', { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) }, async (request, reply) => {
+  app.post('/assets/preview', { preHandler: app.requirePermission(PermissionCode.IMPORT_ASSETS) }, async (request, reply) => {
     const data = await request.file();
     if (!data) return reply.status(400).send({ message: 'Arquivo obrigatório.' });
 
@@ -296,7 +296,7 @@ export async function importRoutes(app: FastifyInstance) {
     return previewPayload(data.filename, validated);
   });
 
-  app.post('/assets', { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) }, async (request, reply) => {
+  app.post('/assets', { preHandler: app.requirePermission(PermissionCode.IMPORT_ASSETS) }, async (request, reply) => {
     const data = await request.file();
     if (!data) return reply.status(400).send({ message: 'Arquivo obrigatório.' });
 

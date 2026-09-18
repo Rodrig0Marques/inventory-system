@@ -1,4 +1,4 @@
-import { UserRole, type Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
 import { visiblePoolFilter } from './visibility.js';
 import { prisma } from '../plugins/prisma.js';
@@ -16,12 +16,16 @@ export function poolScope(request: FastifyRequest, poolId?: string): { poolId?: 
 }
 export function assertPool(request: FastifyRequest, poolId: string) { poolScope(request, poolId); }
 
-// Recheck write access inside the transaction, including a grant revoked after authentication.
+// Revalida o escopo do Pool dentro da transação. A permissão da ação é
+// verificada no preHandler da rota; aqui validamos usuário ativo, vínculo e Pool ativo.
 export async function writablePool(request: FastifyRequest, poolId: string, db: Prisma.TransactionClient = prisma) {
   assertPool(request, poolId);
-  const actor = await db.user.findUnique({ where: { id: request.user.sub }, select: { active: true, role: true, poolAccess: { select: { poolId: true } } } });
-  if (!actor?.active || (actor.role !== UserRole.ADMIN && actor.role !== UserRole.MANAGER)) fail(403, 'Sem permissão de escrita.');
-  if (actor.role !== UserRole.ADMIN && !actor.poolAccess.some(p => p.poolId === poolId)) fail(404, 'Pool ou recurso não encontrado ou sem acesso.');
+  const actor = await db.user.findUnique({
+    where: { id: request.user.sub },
+    select: { active: true, role: true, poolAccess: { select: { poolId: true } } },
+  });
+  if (!actor?.active) fail(403, 'Usuário inativo.');
+  if (actor.role !== 'ADMIN' && !actor.poolAccess.some(p => p.poolId === poolId)) fail(404, 'Pool ou recurso não encontrado ou sem acesso.');
   const pool = await db.pool.findUnique({ where: { id: poolId } });
   if (!pool || !pool.active) fail(400, 'O Pool precisa existir e estar ativo.');
   return pool;

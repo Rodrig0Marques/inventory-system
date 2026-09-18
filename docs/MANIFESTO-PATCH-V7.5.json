@@ -1,0 +1,141 @@
+{
+  "version": "7.5",
+  "description": "Permissoes granulares + separacao Ativos/Estoque + filtros e navegacao por Pool",
+  "files": [
+    {
+      "path": "README-V7.5.md",
+      "sha256": "aeb65587668b5473d6b72bfcda591da2efc19abbdaefcf102c0187e43592da87",
+      "bytes": 5926
+    },
+    {
+      "path": "backend/prisma/schema.prisma",
+      "sha256": "097de52f8bed9cc530bda93694640bc9cae42334b43b4a0e37611ada2da140db",
+      "bytes": 8542
+    },
+    {
+      "path": "backend/prisma/seed.ts",
+      "sha256": "45ccd8444f80315e11b2d49ff592ae7f486166a313593992dcb4d1c4189760dc",
+      "bytes": 3809
+    },
+    {
+      "path": "backend/src/modules/assets/routes.ts",
+      "sha256": "800dcbbe307e8c081f99f9e3907507f789c7d4bd1f61135514993281bb52ca00",
+      "bytes": 15198
+    },
+    {
+      "path": "backend/src/modules/auth/routes.ts",
+      "sha256": "1620a5a636e10813f832c58ad37b9c3ddc7aebc67b1a845e08d94de8c5e5faa7",
+      "bytes": 2285
+    },
+    {
+      "path": "backend/src/modules/categories/routes.ts",
+      "sha256": "b9c79e15b2c44c0592ec4a0929714e4a52c3e210c0ddb953274b8543f69beccc",
+      "bytes": 5652
+    },
+    {
+      "path": "backend/src/modules/folders/routes.ts",
+      "sha256": "247a96484425655cc3715f12e9ef2198a38c92913478364435bf51e21f935f5e",
+      "bytes": 2828
+    },
+    {
+      "path": "backend/src/modules/imports/routes.ts",
+      "sha256": "b3154f7de49226d2c5b50df15cf8b18eb3e27f460f68d32bb6fde1d5f38d9af1",
+      "bytes": 15118
+    },
+    {
+      "path": "backend/src/modules/pools/routes.ts",
+      "sha256": "759c7a42436c183af89e9fc6645681475f34f2ca8e35181fdc98af5654fe2327",
+      "bytes": 5454
+    },
+    {
+      "path": "backend/src/modules/stock/routes.ts",
+      "sha256": "1dd6b29e94a6e5e60b09e52feef389aa5fccff1f44d5262f86298b198aa0ecc1",
+      "bytes": 10961
+    },
+    {
+      "path": "backend/src/modules/users/routes.ts",
+      "sha256": "8e67e22558031c2249f25db7c3420b58114666d84953b9fda06e60d6081be822",
+      "bytes": 8914
+    },
+    {
+      "path": "backend/src/plugins/auth.ts",
+      "sha256": "7446ab3ad2b983239f80d5a014b204517f66bae878e25d2fab68ee72a9707422",
+      "bytes": 4019
+    },
+    {
+      "path": "backend/src/utils/access.ts",
+      "sha256": "99508a5561a7ff1edd59842f517e3748fb0fbd5ceb3e6698a0153da78e3a9a6b",
+      "bytes": 3121
+    },
+    {
+      "path": "backend/src/utils/permissions.ts",
+      "sha256": "91ead9b222344e8c9e53590cef1e88e5cd05edd323cfb6617c3a6bdea8f9f6b0",
+      "bytes": 1347
+    },
+    {
+      "path": "docs/PERMISSOES_V7.5.md",
+      "sha256": "ab2f20ffa20d192086bc356a22fb642d57e7edd0837721f1501cc26ec43eb706",
+      "bytes": 1671
+    },
+    {
+      "path": "frontend/app/assets/[id]/edit/page.tsx",
+      "sha256": "a2fc6deabea7ea5089277b67046ea330f9c553840a397a6578fea8084a980c3d",
+      "bytes": 9922
+    },
+    {
+      "path": "frontend/app/assets/[id]/page.tsx",
+      "sha256": "517306b6986b5decfab1a6924ddc07bb586752e49a650a0cf5de4e1cfc2b4ffe",
+      "bytes": 6395
+    },
+    {
+      "path": "frontend/app/assets/page.tsx",
+      "sha256": "9a414eddaef6edeba2fee5ef4589134e2a46c1f548126b81dd01cd927625d8e4",
+      "bytes": 18584
+    },
+    {
+      "path": "frontend/app/globals.css",
+      "sha256": "5001d4a2155c3901bbfde3b2ddfae7a09299c8c7a697fedcb88409823fef0f5f",
+      "bytes": 30090
+    },
+    {
+      "path": "frontend/app/imports/page.tsx",
+      "sha256": "4fe13fdc5d97f251f1c4fbfc564e8998ff76586ddf339d8061973b75a245830a",
+      "bytes": 10353
+    },
+    {
+      "path": "frontend/app/page.tsx",
+      "sha256": "d1c9b39969ad3880089a55f2722d55ba168beed4ec7d8031cada70e31db0532c",
+      "bytes": 5115
+    },
+    {
+      "path": "frontend/app/pools/[id]/page.tsx",
+      "sha256": "9a81e6a10734b8c9e0b25c0a6f584f0518ec2538df687eee5dc2096c2381a5fe",
+      "bytes": 6266
+    },
+    {
+      "path": "frontend/app/pools/page.tsx",
+      "sha256": "5fde72e49b937ea3e5170ec1d90180c70541fbf25af15977721e9a9f51b54196",
+      "bytes": 5605
+    },
+    {
+      "path": "frontend/app/stock/page.tsx",
+      "sha256": "5039668473ee34b25e40d3d34bc5dfc6611304b0e45f01044b638b0a84dbdc2a",
+      "bytes": 24259
+    },
+    {
+      "path": "frontend/app/structure/page.tsx",
+      "sha256": "96a0e598570ef39a9daeede307ed456cf72015507cbac382384ea74ff794b36d",
+      "bytes": 12300
+    },
+    {
+      "path": "frontend/app/users/page.tsx",
+      "sha256": "3234a960e3cbafe162ece09e7a117412cd0f5efe0d0707d3b6c3fddbe1d6d198",
+      "bytes": 15282
+    },
+    {
+      "path": "frontend/lib/session.ts",
+      "sha256": "d34c274a90afee910977da0925cb978985d815f38605db12649e4f5987fca0bc",
+      "bytes": 2515
+    }
+  ]
+}

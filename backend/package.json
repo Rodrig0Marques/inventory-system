@@ -1,6 +1,6 @@
 {
   "name": "inventory-backend",
-  "version": "0.7.0",
+  "version": "0.7.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,9 +22,9 @@
     "bcryptjs": "^2.4.3",
     "fast-xml-parser": "^5.0.0",
     "fastify": "^5.0.0",
-    "fastify-plugin": "^5.0.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "fastify-plugin": "^5.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -32,8 +32,5 @@
     "prisma": "^6.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.9.2"
-  },
-  "overrides": {
-    "deepmerge-ts": "8.0.2"
   }
 }

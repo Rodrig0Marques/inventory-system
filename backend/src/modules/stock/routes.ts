@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { Prisma, UserRole, StockMovementType } from '@prisma/client';
+import { PermissionCode, Prisma, StockMovementType } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../plugins/prisma.js';
 import { audit } from '../../utils/audit.js';
@@ -25,18 +25,17 @@ async function accessibleProfile(request: Parameters<typeof assertPool>[0], id: 
 
 export async function stockRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
-  const write = { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) };
+  const write = { preHandler: app.requirePermission(PermissionCode.STOCK_MANAGE) };
 
   app.get('/catalog', async request => {
     const q = z.object({ poolId: z.string().optional() }).parse(request.query);
     const scope = poolScope(request, q.poolId);
-    const [profiles, categories, assets] = await prisma.$transaction(async tx => Promise.all([
+    const [profiles, categories] = await prisma.$transaction(async tx => Promise.all([
       tx.itemProfile.findMany({ where: { ...scope, active: true }, include: {
         pool: { select: { id: true, name: true } }, category: true,
         components: { where: { removedAt: null, asset: scope }, select: { quantity: true } },
       }, orderBy: { name: 'asc' } }),
       tx.category.findMany({ orderBy: { name: 'asc' } }),
-      tx.asset.groupBy({ by: ['categoryId'], where: scope, _count: { _all: true } }),
     ]), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
     const items = profiles.map(({ components, ...profile }) => ({ ...profile, ...stockTotals(profile.availableQty, components.reduce((n, c) => n + c.quantity, 0)) }));
     const tree = categories.map(c => {
@@ -44,8 +43,7 @@ export async function stockRoutes(app: FastifyInstance) {
       const sub = items.filter(p => ids.has(p.categoryId));
       const available = sub.reduce((n, p) => n + p.available, 0);
       const installed = sub.reduce((n, p) => n + p.installed, 0);
-      return { ...c, ...stockTotals(available, installed), profileCount: sub.length,
-        assetCount: assets.filter(a => ids.has(a.categoryId)).reduce((n, a) => n + a._count._all, 0) };
+      return { ...c, ...stockTotals(available, installed), profileCount: sub.length };
     });
     return { profiles: items, categories: tree,
       totals: stockTotals(items.reduce((n, p) => n + p.available, 0), items.reduce((n, p) => n + p.installed, 0)) };

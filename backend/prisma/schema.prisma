@@ -13,6 +13,25 @@ enum UserRole {
   VIEWER
 }
 
+enum PermissionCode {
+  GLOBAL_ASSET_LOOKUP
+  GLOBAL_DASHBOARD_STATS
+  ASSET_CREATE
+  ASSET_EDIT
+  ASSET_DELETE
+  ASSET_MOVE
+  IMPORT_ASSETS
+  POOL_CREATE
+  POOL_EDIT
+  POOL_DELETE
+  CATEGORY_CREATE
+  CATEGORY_EDIT
+  CATEGORY_DELETE
+  FOLDER_CREATE
+  FOLDER_DELETE
+  STOCK_MANAGE
+}
+
 enum AssetStatus {
   AVAILABLE
   IN_USE
@@ -45,9 +64,20 @@ model User {
   updatedAt DateTime @updatedAt
   audits    AuditLog[]
   poolAccess UserPool[]
+  permissions UserPermission[]
+  permissionsInitialized Boolean @default(false)
   canGlobalAssetLookup Boolean @default(false)
   canGlobalDashboardStats Boolean @default(false)
   tokenVersion Int @default(0)
+}
+
+model UserPermission {
+  userId     String
+  permission PermissionCode
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permission])
+  @@index([permission])
 }
 
 model Pool {

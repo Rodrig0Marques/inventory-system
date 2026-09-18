@@ -1,6 +1,6 @@
 {
   "name": "inventory-system",
-  "version": "0.7.0",
+  "version": "0.7.5",
   "private": true,
   "workspaces": [
     "backend",
@@ -12,6 +12,5 @@
     "dev:frontend": "npm run dev --workspace frontend",
     "prisma:generate": "npm run prisma:generate --workspace backend",
     "seed": "npm run seed --workspace backend"
-  },
-  "overrides": {}
+  }
 }

@@ -1,7 +1,52 @@
-import { PrismaClient, UserRole } from '@prisma/client';
+import { PermissionCode, PrismaClient, UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
+
+function defaultPermissionsForRole(role: UserRole): PermissionCode[] {
+  if (role === UserRole.ADMIN) return [];
+  if (role === UserRole.MANAGER) {
+    return [
+      PermissionCode.ASSET_CREATE,
+      PermissionCode.ASSET_EDIT,
+      PermissionCode.ASSET_DELETE,
+      PermissionCode.ASSET_MOVE,
+      PermissionCode.IMPORT_ASSETS,
+      PermissionCode.FOLDER_CREATE,
+      PermissionCode.FOLDER_DELETE,
+      PermissionCode.STOCK_MANAGE,
+    ];
+  }
+  return [];
+}
+
+async function initializePermissions() {
+  const users = await prisma.user.findMany({
+    where: { permissionsInitialized: false },
+    select: {
+      id: true,
+      role: true,
+      canGlobalAssetLookup: true,
+      canGlobalDashboardStats: true,
+    },
+  });
+
+  for (const user of users) {
+    const permissions = new Set(defaultPermissionsForRole(user.role));
+    if (user.canGlobalAssetLookup) permissions.add(PermissionCode.GLOBAL_ASSET_LOOKUP);
+    if (user.canGlobalDashboardStats) permissions.add(PermissionCode.GLOBAL_DASHBOARD_STATS);
+
+    await prisma.$transaction(async tx => {
+      if (permissions.size) {
+        await tx.userPermission.createMany({
+          data: [...permissions].map(permission => ({ userId: user.id, permission })),
+          skipDuplicates: true,
+        });
+      }
+      await tx.user.update({ where: { id: user.id }, data: { permissionsInitialized: true } });
+    });
+  }
+}
 
 async function main() {
   const userCount = await prisma.user.count();
@@ -9,13 +54,17 @@ async function main() {
     const password = await bcrypt.hash('admin123', 10);
     await prisma.user.create({
       data: {
-        name: 'Administrador',
-        email: 'admin@inventory.local',
+        name: '',
+        email: '',
         password,
         role: UserRole.ADMIN,
+        permissionsInitialized: true,
       },
     });
   }
+
+  // Migra uma única vez os usuários antigos para o novo modelo granular.
+  await initializePermissions();
 
   const [poolCount, categoryCount, folderCount, auditCount] = await Promise.all([
     prisma.pool.count(),

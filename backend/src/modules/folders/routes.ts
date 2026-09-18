@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { UserRole } from '@prisma/client';
+import { PermissionCode } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../plugins/prisma.js';
 import { audit } from '../../utils/audit.js';
@@ -8,12 +8,13 @@ import { serial } from '../../utils/transaction.js';
 
 export async function folderRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
-  const write = { preHandler: app.authorize([UserRole.ADMIN, UserRole.MANAGER]) };
+  const createPermission = { preHandler: app.requirePermission(PermissionCode.FOLDER_CREATE) };
+  const deletePermission = { preHandler: app.requirePermission(PermissionCode.FOLDER_DELETE) };
   app.get('/', async request => {
     const q = z.object({ poolId: z.string().optional() }).parse(request.query);
     return prisma.folder.findMany({ where: poolScope(request, q.poolId), include: { pool: true, _count: { select: { assets: { where: poolScope(request) }, children: { where: poolScope(request) } } } }, orderBy: [{ pool: { name: 'asc' } }, { name: 'asc' }] });
   });
-  app.post('/', write, async (request, reply) => {
+  app.post('/', createPermission, async (request, reply) => {
     const data = z.object({ name: z.string().trim().min(1).max(100), description: z.string().max(4000).optional().nullable(), poolId: z.string().min(1), parentId: z.string().optional().nullable() }).parse(request.body);
     const result = await serial(async tx => {
       await writablePool(request, data.poolId, tx);
@@ -24,7 +25,7 @@ export async function folderRoutes(app: FastifyInstance) {
     });
     return reply.status(201).send(result);
   });
-  app.delete('/:id', write, async request => {
+  app.delete('/:id', deletePermission, async request => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     return serial(async tx => {
       const folder = await tx.folder.findFirst({ where: { id, ...poolScope(request) }, include: { _count: { select: { assets: true, children: true } } } });
