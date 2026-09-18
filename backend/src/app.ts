@@ -38,22 +38,31 @@ app.setErrorHandler((error, _request, reply) => {
     const conflict = ['P2002', 'P2003', 'P2034'].includes(error.code);
     return reply.status(error.code === 'P2025' ? 404 : conflict ? 409 : 500).send({ message: error.code === 'P2025' ? 'Registro não encontrado.' : conflict ? 'Conflito de dados. Verifique duplicidade, vínculos ou tente novamente.' : 'Falha ao processar os dados.' });
   }
+  if (error instanceof ZodError) {
+    const firstIssue = error.issues[0];
+
+    return reply.status(400).send({
+      message: firstIssue?.message || 'Dados inválidos.',
+      issues: error.issues,
+    });
+  }
+
   const statusCode =
-    error instanceof ZodError
-      ? 400
-      : typeof error === 'object' &&
-          error !== null &&
-          'statusCode' in error &&
-          typeof error.statusCode === 'number'
-        ? error.statusCode
-        : 500;
+    typeof error === 'object' &&
+    error !== null &&
+    'statusCode' in error &&
+    typeof error.statusCode === 'number'
+      ? error.statusCode
+      : 500;
 
-  const message = statusCode >= 500 ? 'Erro interno do servidor.' : error instanceof Error ? error.message : 'Requisição inválida.';
+  const message =
+    statusCode >= 500
+      ? 'Erro interno do servidor.'
+      : error instanceof Error
+        ? error.message
+        : 'Requisição inválida.';
 
-  reply.status(statusCode).send({
-    message,
-    ...(error instanceof ZodError ? { issues: error.issues } : {}),
-  });
+  return reply.status(statusCode).send({ message });
 });
 
 

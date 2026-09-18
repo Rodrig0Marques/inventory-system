@@ -8,8 +8,20 @@ import { effectivePermissions } from '../../utils/permissions.js';
 export async function authRoutes(app: FastifyInstance) {
   app.post('/login', async (request, reply) => {
     const body = z.object({
-      email: z.string().trim().email(),
-      password: z.string().min(1),
+      email: z
+        .string({
+          required_error: 'Informe o e-mail.',
+          invalid_type_error: 'Informe o e-mail.',
+        })
+        .trim()
+        .min(1, 'Informe o e-mail.')
+        .email('Informe um e-mail válido.'),
+      password: z
+        .string({
+          required_error: 'Informe a senha.',
+          invalid_type_error: 'Informe a senha.',
+        })
+        .min(1, 'Informe a senha.'),
     }).parse(request.body);
 
     const email = body.email.toLowerCase();
