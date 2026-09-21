@@ -132,7 +132,7 @@ export default function ImportsPage() {
       <div className="card form-card">
         <div className="card-heading"><div className="card-icon">UP</div><div><h2>Analisar arquivo</h2><p>{assetMode ? 'Valide os ativos antes da gravação.' : 'Cadastre ou atualize itens sem exigir patrimônio.'}</p></div></div>
         <form onSubmit={analyze} className="stack-form">
-          <div className="form-field"><label>Arquivo</label><input key={`${mode}-${file?.name || 'empty'}`} className="file-input" type="file" accept=".csv,.xls,.xlsx,.xml" onChange={e => selectFile(e.target.files?.[0] || null)} required />
+          <div className="form-field"><label>Arquivo</label><input key={mode} className="file-input" type="file" accept=".csv,.xls,.xlsx,.xml" onChange={e => selectFile(e.target.files?.[0] || null)} required />
             <div className="field-help">{assetMode
               ? 'Colunas: patrimônio, nome, setor, categoria, descrição, fabricante, modelo, preço, localização e responsável.'
               : 'Colunas: codigo_interno (opcional), nome, setor, categoria, quantidade, descrição, fabricante, modelo, localização e responsável.'}</div>
