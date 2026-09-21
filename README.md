@@ -143,25 +143,7 @@ Padroes do Compose desta distribuicao:
 
 A instalacao de producao existente pode manter portas externas diferentes. Preserve o `docker-compose.yml` e o `.env` ja homologados quando estiver atualizando um servidor existente.
 
-## Producao atual conhecida
-
-Frontend publico:
-
-```text
-https://inventario.conquesthub.com.br
-```
-
-API publica:
-
-```text
-https://api-inventario.conquesthub.com.br
-```
-
-No build de producao use:
-
-```env
-NEXT_PUBLIC_API_URL=https://api-inventario.conquesthub.com.br
-```
+No build:
 
 Nao deixe `http://localhost:3333` embutido no bundle de producao.
 
