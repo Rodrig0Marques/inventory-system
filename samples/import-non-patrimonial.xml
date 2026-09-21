@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<itens>
+  <item>
+    <codigoInterno></codigoInterno>
+    <nome>Xícara de café</nome>
+    <setor>Administrativo</setor>
+    <categoria>Outros</categoria>
+    <quantidade>24</quantidade>
+    <descricao>Uso na copa</descricao>
+    <fabricante></fabricante>
+    <modelo></modelo>
+    <localizacao>Copa</localizacao>
+    <responsavel></responsavel>
+  </item>
+  <item>
+    <codigoInterno></codigoInterno>
+    <nome>Garrafa térmica</nome>
+    <setor>Administrativo</setor>
+    <categoria>Outros</categoria>
+    <quantidade>3</quantidade>
+    <descricao>Garrafa térmica de uso interno</descricao>
+    <fabricante>Invicta</fabricante>
+    <modelo>1L</modelo>
+    <localizacao>Copa</localizacao>
+    <responsavel></responsavel>
+  </item>
+</itens>

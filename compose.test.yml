@@ -1,0 +1,28 @@
+# Isolated integration environment. No production volumes and no published ports.
+name: inventory-v7-tests
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: inventory_v7_test
+      POSTGRES_USER: inventory_test
+      POSTGRES_PASSWORD: test-only-disposable-password
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory_test -d inventory_v7_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  tests:
+    build:
+      context: ./backend
+      target: build
+    environment:
+      DATABASE_URL: postgresql://inventory_test:test-only-disposable-password@db:5432/inventory_v7_test?schema=test_v7
+      JWT_SECRET: test-only-not-for-production-95fb537b783cec03ae79257cbd01337f
+      RUN_INTEGRATION_TESTS: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "npx prisma db push && npm test && npm run test:integration"]

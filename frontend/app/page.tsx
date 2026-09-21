@@ -56,7 +56,7 @@ export default function Dashboard() {
       <div><div className="eyebrow">Indicadores</div><h2 className="page-section-title">Resumo patrimonial</h2></div>
     </div>
 
-    {data?.countsAreGlobal && !isAdmin && <div className="notice notice-info">Os indicadores Total de ativos, Valor patrimonial, Em uso e Disponíveis consideram todos os Pools. A distribuição por Pool e as categorias continuam respeitando apenas os Pools liberados para sua conta.</div>}
+    {data?.countsAreGlobal && !isAdmin && <div className="notice notice-info">Os indicadores Total de ativos, Valor patrimonial, Em uso e Disponíveis consideram todos os Setores. A distribuição por Setor e as categorias continuam respeitando apenas os Setores liberados para sua conta.</div>}
 
     <section className="grid kpi-grid">
       <div className="card kpi-card"><div className="kpi-icon kpi-blue">A</div><div><div className="label">Total de ativos</div><div className="kpi">{data?.total ?? '-'}</div></div></div>
@@ -67,10 +67,10 @@ export default function Dashboard() {
 
     <section className="dashboard-bottom">
       <div className="card section-card">
-        <div className="section-heading"><div><h2>Distribuição por pool</h2><p>Quantidade atual de ativos por agrupamento.</p></div><Link href="/pools" className="text-link">Ver pools</Link></div>
+        <div className="section-heading"><div><h2>Distribuição por setor</h2><p>Quantidade atual de ativos por agrupamento.</p></div><Link href="/pools" className="text-link">Ver setores</Link></div>
         <div className="simple-list">
           {pools.slice(0, 6).map(pool => <div className="simple-list-row" key={pool.id}><div><Link href={`/assets?poolId=${encodeURIComponent(pool.id)}`}><strong>{pool.name}</strong></Link><span>{pool._count.folders} pasta(s)</span></div><span className="number-chip">{pool._count.assets}</span></div>)}
-          {pools.length === 0 && <div className="empty-state">Nenhum pool cadastrado.</div>}
+          {pools.length === 0 && <div className="empty-state">Nenhum setor cadastrado.</div>}
         </div>
       </div>
 

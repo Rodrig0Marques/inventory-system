@@ -17,28 +17,35 @@ type UserForm = {
 type PermissionOption = { code: PermissionCode; label: string; description: string };
 const permissionGroups: Array<{ title: string; permissions: PermissionOption[] }> = [
   { title: 'Consulta', permissions: [
-    { code: 'GLOBAL_ASSET_LOOKUP', label: 'Consulta global por patrimônio', description: 'Localiza até 50 patrimônios exatos em qualquer Pool sem liberar a listagem global.' },
-    { code: 'GLOBAL_DASHBOARD_STATS', label: 'Indicadores globais no Dashboard', description: 'Total, valor patrimonial, em uso e disponíveis considerando todos os Pools.' },
+    { code: 'GLOBAL_ASSET_LOOKUP', label: 'Consulta global por patrimônio', description: 'Localiza até 50 patrimônios exatos em qualquer Setor sem liberar a listagem global.' },
+    { code: 'GLOBAL_DASHBOARD_STATS', label: 'Indicadores globais no Dashboard', description: 'Total, valor patrimonial, em uso e disponíveis considerando todos os Setores.' },
   ] },
   { title: 'Ativos', permissions: [
-    { code: 'ASSET_CREATE', label: 'Cadastrar ativos', description: 'Cria patrimônios nos Pools permitidos.' },
+    { code: 'ASSET_CREATE', label: 'Cadastrar ativos', description: 'Cria patrimônios nos Setores permitidos.' },
     { code: 'ASSET_EDIT', label: 'Editar ativos', description: 'Altera cadastro, status e classificação dos ativos permitidos.' },
-    { code: 'ASSET_MOVE', label: 'Movimentar ativos', description: 'Move ativos entre Pools/pastas aos quais o usuário possui acesso.' },
+    { code: 'ASSET_MOVE', label: 'Movimentar ativos', description: 'Move ativos entre Setores/pastas aos quais o usuário possui acesso.' },
     { code: 'ASSET_DELETE', label: 'Excluir ativos', description: 'Exclui ativos quando as regras de integridade permitem.' },
-    { code: 'IMPORT_ASSETS', label: 'Importar ativos', description: 'Analisa e importa planilhas para os Pools permitidos.' },
+    { code: 'IMPORT_ASSETS', label: 'Importar ativos', description: 'Analisa e importa planilhas para os Setores permitidos.' },
   ] },
-  { title: 'Pools e estrutura', permissions: [
-    { code: 'POOL_CREATE', label: 'Criar Pool', description: 'Cria um novo Pool e recebe acesso automático a ele.' },
-    { code: 'POOL_EDIT', label: 'Editar / inativar Pool', description: 'Altera Pools aos quais o usuário possui acesso.' },
-    { code: 'POOL_DELETE', label: 'Excluir Pool', description: 'Exclui Pools vazios aos quais o usuário possui acesso.' },
+  { title: 'Itens não patrimoniados', permissions: [
+    { code: 'NON_PATRIMONIAL_CREATE', label: 'Cadastrar itens não patrimoniados', description: 'Cadastra itens sem código patrimonial nos Setores permitidos.' },
+    { code: 'NON_PATRIMONIAL_EDIT', label: 'Editar itens não patrimoniados', description: 'Altera descrição, categoria, localização e responsável.' },
+    { code: 'NON_PATRIMONIAL_MOVE', label: 'Movimentar itens não patrimoniados', description: 'Registra entradas, baixas, ajustes e transferências entre Setores permitidos.' },
+    { code: 'NON_PATRIMONIAL_ARCHIVE', label: 'Arquivar itens não patrimoniados', description: 'Arquiva itens com saldo zerado, preservando o histórico.' },
+    { code: 'IMPORT_NON_PATRIMONIAL', label: 'Importar itens não patrimoniados', description: 'Importa CSV, XLS, XLSX ou XML sem exigir patrimônio.' },
+  ] },
+  { title: 'Setores e estrutura', permissions: [
+    { code: 'POOL_CREATE', label: 'Criar Setor', description: 'Cria um novo Setor e recebe acesso automático a ele.' },
+    { code: 'POOL_EDIT', label: 'Editar / inativar Setor', description: 'Altera Setores aos quais o usuário possui acesso.' },
+    { code: 'POOL_DELETE', label: 'Excluir Setor', description: 'Exclui Setores vazios aos quais o usuário possui acesso.' },
     { code: 'CATEGORY_CREATE', label: 'Criar categoria', description: 'Cria categorias globais do catálogo.' },
     { code: 'CATEGORY_EDIT', label: 'Editar categoria', description: 'Renomeia e reorganiza categorias globais.' },
     { code: 'CATEGORY_DELETE', label: 'Excluir categoria', description: 'Exclui categorias globais sem vínculos.' },
-    { code: 'FOLDER_CREATE', label: 'Criar pasta', description: 'Cria pastas e subpastas dentro dos Pools permitidos.' },
-    { code: 'FOLDER_DELETE', label: 'Excluir pasta', description: 'Exclui pastas vazias dentro dos Pools permitidos.' },
+    { code: 'FOLDER_CREATE', label: 'Criar pasta', description: 'Cria pastas e subpastas dentro dos Setores permitidos.' },
+    { code: 'FOLDER_DELETE', label: 'Excluir pasta', description: 'Exclui pastas vazias dentro dos Setores permitidos.' },
   ] },
   { title: 'Estoque e componentes', permissions: [
-    { code: 'STOCK_MANAGE', label: 'Gerenciar estoque e componentes', description: 'Cria perfis, movimenta saldo e associa/remove componentes nos Pools permitidos.' },
+    { code: 'STOCK_MANAGE', label: 'Gerenciar estoque e componentes', description: 'Cria perfis, movimenta saldo e associa/remove componentes nos Setores permitidos.' },
   ] },
 ];
 
@@ -119,7 +126,7 @@ export default function UsersPage() {
   }
 
   return <>
-    <div className="page-head"><div className="page-head-content"><div className="eyebrow">Administração</div><h1>Usuários</h1><div className="page-description">Pools definem o que o usuário enxerga; permissões adicionais definem o que ele pode fazer.</div></div><div className="count-pill">{items.length} usuário(s)</div></div>
+    <div className="page-head"><div className="page-head-content"><div className="eyebrow">Administração</div><h1>Usuários</h1><div className="page-description">Setores definem o que o usuário enxerga; permissões adicionais definem o que ele pode fazer.</div></div><div className="count-pill">{items.length} usuário(s)</div></div>
     {(error || success) && <div className={`notice ${error ? 'notice-error' : 'notice-success'}`}>{error || success}</div>}
 
     <section className="users-layout">
@@ -130,7 +137,7 @@ export default function UsersPage() {
           {!editingId && <div className="form-field"><label>Senha inicial *</label><input type="password" minLength={8} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required /><div className="field-help">O usuário poderá entrar imediatamente após a criação.</div></div>}
           <div className="form-field"><label>Perfil base *</label><select value={form.role} onChange={e => changeRole(e.target.value as UserRole)}><option value="VIEWER">Visualizador</option><option value="MANAGER">Gestor</option><option value="ADMIN">Administrador</option></select><div className="field-help">O perfil serve como modelo inicial. As permissões abaixo controlam as ações efetivas.</div></div>
 
-          <fieldset className="pool-permissions"><legend>Pools permitidos</legend>{form.role === 'ADMIN' ? <p>Administradores acessam todos os Pools.</p> : <><p>Sem seleção, o usuário não enxerga ativos ou estoque de nenhum Pool.</p>{pools.map(pool => <label className="permission-check" key={pool.id}><input type="checkbox" checked={form.poolIds.includes(pool.id)} onChange={e => setForm({ ...form, poolIds: e.target.checked ? [...form.poolIds, pool.id] : form.poolIds.filter(id => id !== pool.id) })} /><span>{pool.name}{pool.active ? '' : ' (inativo)'}</span></label>)}</>}</fieldset>
+          <fieldset className="pool-permissions"><legend>Setores permitidos</legend>{form.role === 'ADMIN' ? <p>Administradores acessam todos os Setores.</p> : <><p>Sem seleção, o usuário não enxerga ativos ou estoque de nenhum Setor.</p>{pools.map(pool => <label className="permission-check" key={pool.id}><input type="checkbox" checked={form.poolIds.includes(pool.id)} onChange={e => setForm({ ...form, poolIds: e.target.checked ? [...form.poolIds, pool.id] : form.poolIds.filter(id => id !== pool.id) })} /><span>{pool.name}{pool.active ? '' : ' (inativo)'}</span></label>)}</>}</fieldset>
 
           <fieldset className="pool-permissions permission-groups"><legend>Permissões adicionais</legend>{form.role === 'ADMIN' ? <p>Administradores possuem todas as permissões operacionais e acesso global.</p> : permissionGroups.map(group => <div className="permission-group" key={group.title}><h3>{group.title}</h3>{group.permissions.map(permission => <label className="permission-check permission-check-detailed" key={permission.code}><input type="checkbox" checked={form.permissions.includes(permission.code)} onChange={e => togglePermission(permission.code, e.target.checked)} /><span><strong>{permission.label}</strong><br /><small>{permission.description}</small></span></label>)}</div>)}</fieldset>
 
@@ -139,11 +146,11 @@ export default function UsersPage() {
         </form>
       </div>
 
-      <div className="card users-info-card"><div className="eyebrow">Modelo</div><h2>Escopo x permissões</h2><div className="permission-list"><div><span className="role-badge role-admin">Administrador</span><p>Acesso total e gestão de usuários.</p></div><div><span className="role-badge role-manager">Gestor</span><p>Começa com permissões operacionais comuns, mas você pode marcar ou desmarcar ações.</p></div><div><span className="role-badge role-viewer">Visualizador</span><p>Começa sem ações de escrita e pode receber somente as permissões necessárias.</p></div></div><div className="notice notice-info">Exemplo: um Visualizador do RH pode receber apenas <strong>Criar Pool</strong>, <strong>Consulta global por patrimônio</strong> e <strong>Indicadores globais</strong>, sem ganhar edição ou exclusão de ativos.</div></div>
+      <div className="card users-info-card"><div className="eyebrow">Modelo</div><h2>Escopo x permissões</h2><div className="permission-list"><div><span className="role-badge role-admin">Administrador</span><p>Acesso total e gestão de usuários.</p></div><div><span className="role-badge role-manager">Gestor</span><p>Começa com permissões operacionais comuns, mas você pode marcar ou desmarcar ações.</p></div><div><span className="role-badge role-viewer">Visualizador</span><p>Começa sem ações de escrita e pode receber somente as permissões necessárias.</p></div></div><div className="notice notice-info">Exemplo: um Visualizador do RH pode receber apenas <strong>Criar Setor</strong>, <strong>Consulta global por patrimônio</strong> e <strong>Indicadores globais</strong>, sem ganhar edição ou exclusão de ativos.</div></div>
     </section>
 
-    <section className="card section-card"><div className="section-heading"><div><h2>Usuários cadastrados</h2><p>Resumo do escopo e das permissões explícitas.</p></div></div><div className="table-wrap"><table><thead><tr><th>Usuário</th><th>Perfil</th><th>Pools permitidos</th><th>Permissões</th><th>Status</th><th>Criado em</th><th className="align-right">Ações</th></tr></thead><tbody>
-      {items.map(user => { const isSelf = currentUser?.id === user.id; return <tr key={user.id}><td><div className="user-cell"><div className="table-avatar">{user.name.slice(0, 1).toUpperCase()}</div><div><div className="entity-title">{user.name}{isSelf ? ' (você)' : ''}</div><div className="entity-subtitle">{user.email}</div></div></div></td><td><span className={`role-badge role-${user.role.toLowerCase()}`}>{roleLabel(user.role)}</span></td><td>{user.role === 'ADMIN' ? 'Todos os Pools' : user.poolAccess.map(p => p.pool.name).join(', ') || 'Nenhum Pool liberado'}</td><td>{user.role === 'ADMIN' ? 'Todas (Admin)' : `${user.permissions.length} permissão(ões)`}</td><td><span className={`status-badge ${user.active ? 'status-active' : 'status-inactive'}`}><span />{user.active ? 'Ativo' : 'Inativo'}</span></td><td>{new Date(user.createdAt).toLocaleDateString('pt-BR')}</td><td className="align-right"><div className="row-actions"><button type="button" className="table-action" onClick={() => startEdit(user)}>Editar</button><button type="button" className="table-action" onClick={() => { setPasswordTarget(user); setNewPassword(''); }}>Senha</button><button type="button" className="table-action" disabled={isSelf} onClick={() => toggleActive(user)}>{user.active ? 'Desativar' : 'Ativar'}</button><button type="button" className="icon-danger" disabled={isSelf} onClick={() => remove(user)}>Excluir</button></div></td></tr>; })}
+    <section className="card section-card"><div className="section-heading"><div><h2>Usuários cadastrados</h2><p>Resumo do escopo e das permissões explícitas.</p></div></div><div className="table-wrap"><table><thead><tr><th>Usuário</th><th>Perfil</th><th>Setores permitidos</th><th>Permissões</th><th>Status</th><th>Criado em</th><th className="align-right">Ações</th></tr></thead><tbody>
+      {items.map(user => { const isSelf = currentUser?.id === user.id; return <tr key={user.id}><td><div className="user-cell"><div className="table-avatar">{user.name.slice(0, 1).toUpperCase()}</div><div><div className="entity-title">{user.name}{isSelf ? ' (você)' : ''}</div><div className="entity-subtitle">{user.email}</div></div></div></td><td><span className={`role-badge role-${user.role.toLowerCase()}`}>{roleLabel(user.role)}</span></td><td>{user.role === 'ADMIN' ? 'Todos os Setores' : user.poolAccess.map(p => p.pool.name).join(', ') || 'Nenhum Setor liberado'}</td><td>{user.role === 'ADMIN' ? 'Todas (Admin)' : `${user.permissions.length} permissão(ões)`}</td><td><span className={`status-badge ${user.active ? 'status-active' : 'status-inactive'}`}><span />{user.active ? 'Ativo' : 'Inativo'}</span></td><td>{new Date(user.createdAt).toLocaleDateString('pt-BR')}</td><td className="align-right"><div className="row-actions"><button type="button" className="table-action" onClick={() => startEdit(user)}>Editar</button><button type="button" className="table-action" onClick={() => { setPasswordTarget(user); setNewPassword(''); }}>Senha</button><button type="button" className="table-action" disabled={isSelf} onClick={() => toggleActive(user)}>{user.active ? 'Desativar' : 'Ativar'}</button><button type="button" className="icon-danger" disabled={isSelf} onClick={() => remove(user)}>Excluir</button></div></td></tr>; })}
       {items.length === 0 && <tr><td colSpan={7}><div className="empty-state">Nenhum usuário cadastrado.</div></td></tr>}
     </tbody></table></div></section>
 

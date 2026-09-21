@@ -19,7 +19,7 @@ export async function folderRoutes(app: FastifyInstance) {
     const result = await serial(async tx => {
       await writablePool(request, data.poolId, tx);
       await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${`folders:${data.poolId}`}))`;
-      if (data.parentId && !await tx.folder.findFirst({ where: { id: data.parentId, poolId: data.poolId } })) fail(400, 'A pasta pai deve pertencer ao mesmo Pool.');
+      if (data.parentId && !await tx.folder.findFirst({ where: { id: data.parentId, poolId: data.poolId } })) fail(400, 'A pasta pai deve pertencer ao mesmo Setor.');
       if (await tx.folder.findFirst({ where: { name: data.name, poolId: data.poolId, parentId: data.parentId ?? null } })) fail(409, 'Já existe uma pasta com esse nome neste nível.');
       const folder = await tx.folder.create({ data }); await audit(request, 'CREATE', 'Folder', folder.id, undefined, folder, tx); return folder;
     });

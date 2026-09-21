@@ -15,6 +15,11 @@ function defaultPermissionsForRole(role: UserRole): PermissionCode[] {
       PermissionCode.FOLDER_CREATE,
       PermissionCode.FOLDER_DELETE,
       PermissionCode.STOCK_MANAGE,
+      PermissionCode.NON_PATRIMONIAL_CREATE,
+      PermissionCode.NON_PATRIMONIAL_EDIT,
+      PermissionCode.NON_PATRIMONIAL_MOVE,
+      PermissionCode.NON_PATRIMONIAL_ARCHIVE,
+      PermissionCode.IMPORT_NON_PATRIMONIAL,
     ];
   }
   return [];
@@ -54,8 +59,8 @@ async function main() {
     const password = await bcrypt.hash('admin123', 10);
     await prisma.user.create({
       data: {
-        name: '',
-        email: '',
+        name: 'Administrador',
+        email: 'admin@inventory.local',
         password,
         role: UserRole.ADMIN,
         permissionsInitialized: true,
@@ -107,6 +112,8 @@ async function main() {
     'Ar-condicionado',
     'Veículo',
     'Ferramenta',
+    'Copa e cozinha',
+    'Utilidades',
     'Outros',
   ];
 

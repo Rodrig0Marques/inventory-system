@@ -25,9 +25,9 @@ export async function writablePool(request: FastifyRequest, poolId: string, db: 
     select: { active: true, role: true, poolAccess: { select: { poolId: true } } },
   });
   if (!actor?.active) fail(403, 'Usuário inativo.');
-  if (actor.role !== 'ADMIN' && !actor.poolAccess.some(p => p.poolId === poolId)) fail(404, 'Pool ou recurso não encontrado ou sem acesso.');
+  if (actor.role !== 'ADMIN' && !actor.poolAccess.some(p => p.poolId === poolId)) fail(404, 'Setor ou recurso não encontrado ou sem acesso.');
   const pool = await db.pool.findUnique({ where: { id: poolId } });
-  if (!pool || !pool.active) fail(400, 'O Pool precisa existir e estar ativo.');
+  if (!pool || !pool.active) fail(400, 'O Setor precisa existir e estar ativo.');
   return pool;
 }
 
@@ -42,7 +42,7 @@ export async function validateAssetLinks(db: Prisma.TransactionClient, data: { p
   if (!category) fail(400, 'Categoria não encontrada.');
   if (data.folderId) {
     const folder = await db.folder.findUnique({ where: { id: data.folderId } });
-    if (!folder || folder.poolId !== data.poolId) fail(400, 'A pasta deve pertencer ao Pool do ativo.');
+    if (!folder || folder.poolId !== data.poolId) fail(400, 'A pasta deve pertencer ao Setor do ativo.');
   }
   if (data.assetTypeId) {
     const type = await db.assetType.findUnique({ where: { id: data.assetTypeId } });

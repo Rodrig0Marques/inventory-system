@@ -30,6 +30,11 @@ enum PermissionCode {
   FOLDER_CREATE
   FOLDER_DELETE
   STOCK_MANAGE
+  NON_PATRIMONIAL_CREATE
+  NON_PATRIMONIAL_EDIT
+  NON_PATRIMONIAL_MOVE
+  NON_PATRIMONIAL_ARCHIVE
+  IMPORT_NON_PATRIMONIAL
 }
 
 enum AssetStatus {
@@ -89,6 +94,7 @@ model Pool {
   updatedAt   DateTime @updatedAt
   members     UserPool[]
   profiles    ItemProfile[]
+  nonPatrimonialItems NonPatrimonialItem[]
   folders     Folder[]
   assets      Asset[]
 }
@@ -119,6 +125,7 @@ model Category {
   parent      Category? @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
   children    Category[] @relation("CategoryTree")
   profiles    ItemProfile[]
+  nonPatrimonialItems NonPatrimonialItem[]
   assetTypes  AssetType[]
   customFields CustomField[]
   assets      Asset[]
@@ -211,7 +218,13 @@ model AssetMovement {
   asset           Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
 }
 
+enum ImportKind {
+  ASSET
+  NON_PATRIMONIAL
+}
+
 model ImportJob {
+  kind        ImportKind @default(ASSET)
   userId      String?
   poolIds     String[] @default([])
   id          String   @id @default(cuid())
@@ -321,4 +334,65 @@ model StockOperation {
   inputHash String
   result Json
   createdAt DateTime @default(now())
+}
+
+
+enum NonPatrimonialMovementType {
+  INITIAL
+  ENTRY
+  EXIT
+  ADJUSTMENT
+  TRANSFER_OUT
+  TRANSFER_IN
+  IMPORT_SET
+}
+
+model SystemCounter {
+  key   String @id
+  value Int    @default(0)
+}
+
+model NonPatrimonialItem {
+  id           String   @id @default(cuid())
+  internalCode String   @unique
+  lineageId    String   @default(cuid())
+  name         String
+  description  String?
+  manufacturer String?
+  model        String?
+  quantity     Int      @default(0)
+  location     String?
+  responsible  String?
+  poolId       String
+  categoryId   String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  pool         Pool     @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  category     Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  movements    NonPatrimonialMovement[]
+
+  @@index([poolId, active])
+  @@index([categoryId, active])
+  @@index([lineageId, poolId, active])
+  @@index([name])
+}
+
+model NonPatrimonialMovement {
+  id                String   @id @default(cuid())
+  itemId            String
+  userId            String
+  type              NonPatrimonialMovementType
+  quantity          Int
+  quantityBefore    Int
+  quantityAfter     Int
+  fromPoolId        String?
+  toPoolId          String?
+  counterpartItemId String?
+  notes             String?
+  createdAt         DateTime @default(now())
+  item              NonPatrimonialItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([itemId, createdAt])
+  @@index([userId, createdAt])
 }

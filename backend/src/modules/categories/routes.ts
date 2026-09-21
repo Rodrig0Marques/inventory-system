@@ -12,7 +12,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     include: {
       assetTypes: true,
       customFields: true,
-      _count: { select: { assets: { where: poolScope(request) } } },
+      _count: { select: { assets: { where: poolScope(request) }, nonPatrimonialItems: { where: { ...poolScope(request), active: true } } } },
     },
     orderBy: { name: 'asc' },
   }));
@@ -70,7 +70,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const category = await prisma.category.findUnique({
       where: { id },
-      include: { _count: { select: { assets: true, children: true, profiles: true } } },
+      include: { _count: { select: { assets: true, children: true, profiles: true, nonPatrimonialItems: true } } },
     });
 
     if (!category) return reply.status(404).send({ message: 'Categoria não encontrada' });
@@ -80,7 +80,7 @@ export async function categoryRoutes(app: FastifyInstance) {
       });
     }
 
-    if (category._count.children || category._count.profiles) return reply.status(409).send({ message: 'A categoria possui subcategorias ou perfis de estoque. O histórico não pode ser apagado.' });
+    if (category._count.children || category._count.profiles || category._count.nonPatrimonialItems) return reply.status(409).send({ message: 'A categoria possui subcategorias, perfis de estoque ou itens não patrimoniados. O histórico não pode ser apagado.' });
     await prisma.category.delete({ where: { id } });
     await audit(request, 'DELETE', 'Category', id, category, undefined);
     return reply.send({ message: 'Categoria excluída com sucesso' });

@@ -176,14 +176,14 @@ export default function AssetsPage() {
   const hasStructure = pools.length > 0 && categories.length > 0;
 
   return <>
-    <div className="page-head"><div className="page-head-content"><div className="eyebrow">Patrimônio</div><h1>Ativos</h1><div className="page-description">Consulte e gerencie os patrimônios. Use os filtros para recortar por Pool, categoria e status.</div></div><div className="count-pill">{total} ativo(s)</div></div>
+    <div className="page-head"><div className="page-head-content"><div className="eyebrow">Patrimônio</div><h1>Ativos</h1><div className="page-description">Consulte e gerencie os patrimônios. Use os filtros para recortar por Setor, categoria e status.</div></div><div className="count-pill">{total} ativo(s)</div></div>
     {(error || success) && <div className={`notice ${error ? 'notice-error' : 'notice-success'}`}>{error || success}</div>}
 
     <section className="card section-card asset-filter-card">
-      <div className="section-heading"><div><h2>Filtros</h2><p>A listagem respeita somente os Pools liberados para sua conta.</p></div></div>
+      <div className="section-heading"><div><h2>Filtros</h2><p>A listagem respeita somente os Setores liberados para sua conta.</p></div></div>
       <form className="asset-filter-grid" onSubmit={applyFilters}>
         <label className="form-field"><span>Buscar</span><input value={filters.search} onChange={e => setFilters({ ...filters, search: e.target.value })} placeholder="Patrimônio, nome, fabricante, modelo..." /></label>
-        <label className="form-field"><span>Pool</span><select value={filters.poolId} onChange={e => setFilters({ ...filters, poolId: e.target.value })}><option value="">Todos os meus Pools</option>{pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</select></label>
+        <label className="form-field"><span>Setor</span><select value={filters.poolId} onChange={e => setFilters({ ...filters, poolId: e.target.value })}><option value="">Todos os meus Setores</option>{pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</select></label>
         <label className="form-field"><span>Categoria</span><select value={filters.categoryId} onChange={e => setFilters({ ...filters, categoryId: e.target.value })}><option value="">Todas as categorias</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label className="form-field"><span>Status</span><select value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}><option value="">Todos</option>{statusOptions.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
         <div className="asset-filter-actions"><button className="primary">Filtrar</button><button type="button" className="secondary" onClick={clearFilters}>Limpar</button></div>
@@ -191,22 +191,22 @@ export default function AssetsPage() {
     </section>
 
     {canGlobalLookup && <section className="card section-card">
-      <div className="section-heading"><div><h2>Consulta por patrimônio</h2><p>Cole até 50 códigos exatos, separados por linha, vírgula ou ponto e vírgula. A consulta não amplia sua listagem normal.</p></div></div>
+      <div className="section-heading"><div><h2>Consulta global por patrimônio</h2><p>Cole até 50 códigos exatos, separados por linha, vírgula ou ponto e vírgula. A consulta não amplia sua listagem normal.</p></div></div>
       <form className="global-lookup-form" onSubmit={globalLookup}>
         <textarea rows={4} value={globalPatrimony} onChange={e => { setGlobalPatrimony(e.target.value); setGlobalSearched(false); setGlobalError(''); }} placeholder={'C0595\nC0594\nC0593'} maxLength={5000} />
-        <button className="secondary" disabled={globalSearching || !globalPatrimony.trim()}>{globalSearching ? 'Consultando...' : 'Consultar em todos os Pools'}</button>
+        <button className="secondary" disabled={globalSearching || !globalPatrimony.trim()}>{globalSearching ? 'Consultando...' : 'Consultar em todos os Setores'}</button>
       </form>
       {globalError && <div className="notice notice-error">{globalError}</div>}
       {globalSearched && !globalError && globalResults.length === 0 && <div className="empty-state">Nenhum dos patrimônios informados foi encontrado.</div>}
       {globalNotFound.length > 0 && <div className="notice notice-warning"><strong>Não encontrados:</strong> {globalNotFound.join(', ')}</div>}
-      {globalResults.length > 0 && <div className="table-wrap"><table><thead><tr><th>Patrimônio</th><th>Ativo</th><th>Pool</th><th>Categoria</th><th>Status</th><th>Localização</th><th>Responsável</th></tr></thead><tbody>{globalResults.map(item => <tr key={item.id}><td><span className="patrimony-code">{item.patrimonyNumber}</span></td><td><div className="entity-title">{item.name}</div><div className="entity-subtitle">{[item.manufacturer, item.model].filter(Boolean).join(' - ') || item.description || '-'}</div></td><td><span className="pool-badge">{item.pool.name}</span>{item.folder && <div className="entity-subtitle">{item.folder.name}</div>}</td><td>{item.category.name}</td><td>{statusLabel(item.status)}</td><td>{item.location || '-'}</td><td>{item.responsible || '-'}</td></tr>)}</tbody></table></div>}
+      {globalResults.length > 0 && <div className="table-wrap"><table><thead><tr><th>Patrimônio</th><th>Ativo</th><th>Setor</th><th>Categoria</th><th>Status</th><th>Localização</th><th>Responsável</th></tr></thead><tbody>{globalResults.map(item => <tr key={item.id}><td><span className="patrimony-code">{item.patrimonyNumber}</span></td><td><div className="entity-title">{item.name}</div><div className="entity-subtitle">{[item.manufacturer, item.model].filter(Boolean).join(' - ') || item.description || '-'}</div></td><td><span className="pool-badge">{item.pool.name}</span>{item.folder && <div className="entity-subtitle">{item.folder.name}</div>}</td><td>{item.category.name}</td><td>{statusLabel(item.status)}</td><td>{item.location || '-'}</td><td>{item.responsible || '-'}</td></tr>)}</tbody></table></div>}
     </section>}
 
-    {canCreate && !hasStructure && <div className="notice notice-warning">Para cadastrar ativos, crie pelo menos um <Link href="/pools">Pool</Link> e uma <Link href="/structure">categoria</Link>.</div>}
+    {canCreate && !hasStructure && <div className="notice notice-warning">Para cadastrar ativos, crie pelo menos um <Link href="/pools">Setor</Link> e uma <Link href="/structure">categoria</Link>.</div>}
     {canCreate && <section className="card section-card form-section">
       <div className="section-heading"><div><h2>Novo ativo</h2><p>Ativos são patrimônios principais. Componentes e peças ficam em Estoque e componentes.</p></div></div>
       <form onSubmit={create} className="form-grid asset-form">
-        <div className="form-field"><label>Pool *</label><select value={form.poolId} onChange={e => setForm({ ...form, poolId: e.target.value, folderId: '' })} required disabled={!pools.length}><option value="">Selecione</option>{pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</select></div>
+        <div className="form-field"><label>Setor *</label><select value={form.poolId} onChange={e => setForm({ ...form, poolId: e.target.value, folderId: '' })} required disabled={!pools.length}><option value="">Selecione</option>{pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</select></div>
         <div className="form-field"><label>Pasta</label><select value={form.folderId} onChange={e => setForm({ ...form, folderId: e.target.value })}><option value="">Sem pasta</option>{availableFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div>
         <div className="form-field"><label>Categoria *</label><select value={form.categoryId} onChange={e => setForm({ ...form, categoryId: e.target.value })} required disabled={!categories.length}><option value="">Selecione</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div>
         <div className="form-field"><label>Patrimônio *</label><input value={form.patrimonyNumber} onChange={e => setForm({ ...form, patrimonyNumber: e.target.value })} required /></div>
@@ -223,7 +223,7 @@ export default function AssetsPage() {
 
     <section className="card section-card">
       <div className="section-heading"><div><h2>Ativos cadastrados</h2><p>{total} patrimônio(s) no recorte atual.</p></div></div>
-      <div className="table-wrap"><table><thead><tr><th>Patrimônio</th><th>Nome</th><th>Fabricante</th><th>Modelo</th><th>Preço</th><th>Localização</th><th>Responsável</th><th>Status</th><th>Pool</th><th>Categoria</th>{(canEdit || canDelete) && <th className="align-right">Ações</th>}</tr></thead><tbody>
+      <div className="table-wrap"><table><thead><tr><th>Patrimônio</th><th>Nome</th><th>Fabricante</th><th>Modelo</th><th>Preço</th><th>Localização</th><th>Responsável</th><th>Status</th><th>Setor</th><th>Categoria</th>{(canEdit || canDelete) && <th className="align-right">Ações</th>}</tr></thead><tbody>
         {items.map(asset => <tr key={asset.id}><td><span className="patrimony-code">{asset.patrimonyNumber}</span></td><td><Link className="entity-title" href={`/assets/${asset.id}`}>{asset.name}</Link><div className="entity-subtitle">Ver detalhes e componentes</div></td><td>{asset.manufacturer || '-'}</td><td>{asset.model || '-'}</td><td>{formatPrice(asset.purchasePrice)}</td><td>{asset.location || '-'}</td><td>{asset.responsible || '-'}</td><td><span className={statusClass(asset.status)}>{statusLabel(asset.status)}</span></td><td><Link href={`/assets?poolId=${encodeURIComponent(asset.pool.id)}`} className="pool-badge">{asset.pool.name}</Link></td><td>{asset.category.name}</td>{(canEdit || canDelete) && <td className="align-right"><div className="row-actions">{canEdit && <Link className="table-action" href={`/assets/${asset.id}/edit`}>Editar</Link>}{canDelete && <button type="button" className="icon-danger" onClick={() => removeAsset(asset)}>Excluir</button>}</div></td>}</tr>)}
         {items.length === 0 && <tr><td colSpan={(canEdit || canDelete) ? 11 : 10}><div className="empty-state">Nenhum ativo encontrado.</div></td></tr>}
       </tbody></table></div>

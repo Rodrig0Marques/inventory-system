@@ -16,13 +16,13 @@ export type ComponentInput = z.infer<typeof componentSchema>;
 export async function attachComponents(tx: Prisma.TransactionClient, request: FastifyRequest, assets: Asset[], components: ComponentInput[], operationId: string) {
   if (!assets.length) fail(400, 'Selecione pelo menos um ativo.');
   const poolId = assets[0].poolId;
-  if (assets.some(a => a.poolId !== poolId)) fail(400, 'Selecione ativos de um único Pool por lote.');
+  if (assets.some(a => a.poolId !== poolId)) fail(400, 'Selecione ativos de um único Setor por lote.');
   if (assets.some(a => ['DISPOSED', 'SOLD', 'LOST', 'INACTIVE'].includes(a.status))) fail(400, 'Não é permitido instalar componentes em ativos baixados, vendidos, extraviados ou inativos.');
   await writablePool(request, poolId, tx);
   const installed: string[] = [];
   for (const part of components) {
     const profile = await tx.itemProfile.findFirst({ where: { id: part.profileId, ...poolScope(request) } });
-    if (!profile || !profile.active || profile.poolId !== poolId) fail(400, 'O perfil precisa estar ativo e pertencer ao mesmo Pool dos ativos.');
+    if (!profile || !profile.active || profile.poolId !== poolId) fail(400, 'O perfil precisa estar ativo e pertencer ao mesmo Setor dos ativos.');
     const total = quantityForBatch(part.quantity, assets.length);
     if (part.origin === ComponentOrigin.FROM_STOCK && profile.availableQty < total) fail(409, `Estoque insuficiente para "${profile.name}": necessárias ${total} unidade(s), disponíveis ${profile.availableQty}.`);
     afterInstall(profile.availableQty, 0, total, part.origin);

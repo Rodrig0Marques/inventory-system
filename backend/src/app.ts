@@ -11,6 +11,7 @@ import { categoryRoutes } from './modules/categories/routes.js';
 import { assetRoutes } from './modules/assets/routes.js';
 import { importRoutes } from './modules/imports/routes.js';
 import { stockRoutes } from './modules/stock/routes.js';
+import { nonPatrimonialRoutes } from './modules/non-patrimonial/routes.js';
 import { Prisma } from '@prisma/client';
 import { userRoutes } from './modules/users/routes.js';
 
@@ -30,6 +31,7 @@ app.register(assetRoutes, { prefix: '/assets' });
 app.register(importRoutes, { prefix: '/imports' });
 app.register(userRoutes, { prefix: '/users' });
 app.register(stockRoutes, { prefix: '/stock' });
+app.register(nonPatrimonialRoutes, { prefix: '/non-patrimonial' });
 
 app.setErrorHandler((error, _request, reply) => {
   app.log.error(error);

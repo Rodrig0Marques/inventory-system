@@ -15,6 +15,11 @@ export function defaultPermissionsForRole(role: UserRole): PermissionCode[] {
       PermissionCode.FOLDER_CREATE,
       PermissionCode.FOLDER_DELETE,
       PermissionCode.STOCK_MANAGE,
+      PermissionCode.NON_PATRIMONIAL_CREATE,
+      PermissionCode.NON_PATRIMONIAL_EDIT,
+      PermissionCode.NON_PATRIMONIAL_MOVE,
+      PermissionCode.NON_PATRIMONIAL_ARCHIVE,
+      PermissionCode.IMPORT_NON_PATRIMONIAL,
     ];
   }
   return [];

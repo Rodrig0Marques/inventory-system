@@ -12,8 +12,9 @@ type NavItem = { href: string; label: string; icon: IconName; roles?: UserRole[]
 const links: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: 'dashboard' },
   { href: '/assets', label: 'Ativos', icon: 'assets' },
+  { href: '/non-patrimonial', label: 'Itens não patrimoniados', icon: 'assets' },
   { href: '/stock', label: 'Estoque e componentes', icon: 'assets' },
-  { href: '/pools', label: 'Pools', icon: 'pools' },
+  { href: '/pools', label: 'Setores', icon: 'pools' },
   { href: '/structure', label: 'Estrutura', icon: 'structure' },
   { href: '/imports', label: 'Importações', icon: 'imports' },
   { href: '/users', label: 'Usuários', icon: 'users', roles: ['ADMIN'] },
@@ -163,7 +164,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <header className="topbar">
           <div>
             <strong>Inventário corporativo</strong>
-            <span>Controle centralizado de ativos</span>
+            <span>Controle centralizado de inventário</span>
           </div>
           <div className="topbar-actions">
             <button

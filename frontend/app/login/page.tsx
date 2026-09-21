@@ -41,8 +41,8 @@ export default function LoginPage() {
     <div className="login-backdrop" />
     <section className="login-card">
       <div className="login-brand">
-        <div className="login-mark">C</div>
-        <div><strong>Inventário - Cia do Crédito</strong><span>Gestão patrimonial</span></div>
+        <div className="login-mark">I</div>
+        <div><strong>Inventário</strong><span>Gestão patrimonial</span></div>
       </div>
       <div className="login-copy">
         <div className="eyebrow">Acesso interno</div>

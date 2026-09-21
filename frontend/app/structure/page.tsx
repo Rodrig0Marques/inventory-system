@@ -22,7 +22,7 @@ type Category = {
   id: string;
   name: string;
   description?: string | null;
-  _count: { assets: number };
+  _count: { assets: number; nonPatrimonialItems?: number };
 };
 
 export default function StructurePage() {
@@ -141,7 +141,7 @@ export default function StructurePage() {
   }
 
   async function removeFolder(folder: Folder) {
-    if (!window.confirm(`Excluir a pasta "${folder.name}" do pool "${folder.pool.name}"?`)) return;
+    if (!window.confirm(`Excluir a pasta "${folder.name}" do setor "${folder.pool.name}"?`)) return;
     setError('');
     setSuccess('');
     try {
@@ -178,24 +178,24 @@ export default function StructurePage() {
       </div>}
 
       {canCreateFolder && <div className="card form-card">
-        <div className="card-heading"><div className="card-icon">P</div><div><h2>Nova pasta</h2><p>Organize os ativos dentro de cada pool.</p></div></div>
+        <div className="card-heading"><div className="card-icon">P</div><div><h2>Nova pasta</h2><p>Organize os ativos dentro de cada setor.</p></div></div>
         <form onSubmit={createFolder} className="stack-form">
-          <div className="form-field"><label>Pool</label><select value={folderPool} onChange={e => { setFolderPool(e.target.value); setParentId(''); }} required><option value="" disabled>Selecione</option>{pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</select></div>
+          <div className="form-field"><label>Setor</label><select value={folderPool} onChange={e => { setFolderPool(e.target.value); setParentId(''); }} required><option value="" disabled>Selecione</option>{pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</select></div>
           <div className="form-field"><label>Nome da pasta</label><input value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="Ex.: Hardware, Estoque" required /></div>
-          <div className="form-field"><label>Pasta pai</label><select value={parentId} onChange={e => setParentId(e.target.value)}><option value="">Raiz do pool</option>{availableParents.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div>
+          <div className="form-field"><label>Pasta pai</label><select value={parentId} onChange={e => setParentId(e.target.value)}><option value="">Raiz do setor</option>{availableParents.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div>
           <button className="primary full-button" disabled={!folderPool}>Criar pasta</button>
         </form>
       </div>}
     </section>}
 
-    <div className="notice notice-info">Categorias são globais; pastas e ativos respeitam os Pools permitidos. As ações exibidas dependem das permissões adicionais do usuário.</div>
+    <div className="notice notice-info">Categorias são globais; pastas e ativos respeitam os Setores permitidos. As ações exibidas dependem das permissões adicionais do usuário.</div>
     <section className="card section-card">
       <div className="section-heading"><div><h2>Categorias</h2><p>Categorias em uso não podem ser excluídas até que os ativos sejam alterados ou removidos.</p></div></div>
       <div className="category-grid">
         {categories.map(category => <article className="category-item" key={category.id}>
           <div className="category-symbol">{category.name.slice(0, 1).toUpperCase()}</div>
-          <div className="category-content"><strong>{categoryPath(categories,category.id)}</strong><span>{category._count.assets} ativo(s) direto(s) | Componentes: {category.total || 0} no total / {category.available || 0} disponíveis</span></div>
-          <div className="row-actions"><Link className="table-action" href={`/assets?categoryId=${encodeURIComponent(category.id)}`}>Ver ativos</Link><Link className="table-action" href={`/stock?categoryId=${encodeURIComponent(category.id)}`}>Ver componentes</Link>{canEditCategory && <button type="button" className="table-action" onClick={() => startEditCategory(category)} title="Editar categoria">Editar</button>}{canDeleteCategory && <button type="button" className="mini-delete" onClick={() => removeCategory(category)} title="Excluir categoria">Excluir</button>}</div>
+          <div className="category-content"><strong>{categoryPath(categories,category.id)}</strong><span>{category._count.assets} ativo(s) direto(s) | Não patrimoniados: {category._count.nonPatrimonialItems || 0} | Componentes: {category.total || 0} no total / {category.available || 0} disponíveis</span></div>
+          <div className="row-actions"><Link className="table-action" href={`/assets?categoryId=${encodeURIComponent(category.id)}`}>Ver ativos</Link><Link className="table-action" href={`/non-patrimonial?categoryId=${encodeURIComponent(category.id)}`}>Ver não patrim.</Link><Link className="table-action" href={`/stock?categoryId=${encodeURIComponent(category.id)}`}>Ver componentes</Link>{canEditCategory && <button type="button" className="table-action" onClick={() => startEditCategory(category)} title="Editar categoria">Editar</button>}{canDeleteCategory && <button type="button" className="mini-delete" onClick={() => removeCategory(category)} title="Excluir categoria">Excluir</button>}</div>
         </article>)}
         {categories.length === 0 && <div className="empty-state">Nenhuma categoria cadastrada.</div>}
       </div>
@@ -205,7 +205,7 @@ export default function StructurePage() {
       <div className="section-heading"><div><h2>Pastas e subpastas</h2><p>Pastas com ativos ou subpastas precisam ser esvaziadas antes da exclusão.</p></div></div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Pool</th><th>Pasta</th><th>Pasta pai</th><th>Ativos</th><th>Subpastas</th>{canDeleteFolder && <th className="align-right">Ações</th>}</tr></thead>
+          <thead><tr><th>Setor</th><th>Pasta</th><th>Pasta pai</th><th>Ativos</th><th>Subpastas</th>{canDeleteFolder && <th className="align-right">Ações</th>}</tr></thead>
           <tbody>
             {folders.map(folder => <tr key={folder.id}>
               <td><span className="pool-badge">{folder.pool.name}</span></td>

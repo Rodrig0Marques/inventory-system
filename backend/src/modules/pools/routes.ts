@@ -24,7 +24,7 @@ function stockSummary(profiles: Array<{ availableQty: number; components: Array<
 function assignedPoolWhere(request: FastifyRequest, poolId?: string) {
   if (request.user.role === UserRole.ADMIN) return poolId ? { id: poolId } : {};
   const ids = request.assignedPoolIds ?? [];
-  if (poolId && !ids.includes(poolId)) fail(404, 'Pool não encontrado ou sem acesso.');
+  if (poolId && !ids.includes(poolId)) fail(404, 'Setor não encontrado ou sem acesso.');
   return poolId ? { id: poolId } : { id: { in: ids } };
 }
 
@@ -51,7 +51,7 @@ export async function poolRoutes(app: FastifyInstance) {
       where: poolListWhere(request),
       orderBy: { name: 'asc' },
       include: {
-        _count: { select: { assets: true, folders: true } },
+        _count: { select: { assets: true, folders: true, nonPatrimonialItems: { where: { active: true } } } },
         profiles: {
           where: { active: true },
           select: { availableQty: true, components: { where: { removedAt: null }, select: { quantity: true } } },
@@ -66,17 +66,21 @@ export async function poolRoutes(app: FastifyInstance) {
     const pool = await prisma.pool.findFirst({
       where: poolReadWhere(request, id),
       include: {
-        _count: { select: { assets: true, folders: true } },
+        _count: { select: { assets: true, folders: true, nonPatrimonialItems: { where: { active: true } } } },
         profiles: {
           where: { active: true },
           select: { availableQty: true, components: { where: { removedAt: null }, select: { quantity: true } } },
         },
       },
     });
-    if (!pool) fail(404, 'Pool não encontrado ou sem acesso.');
-    const categoryGroups = await prisma.asset.groupBy({ by: ['categoryId'], where: { poolId: id }, _count: { _all: true } });
+    if (!pool) fail(404, 'Setor não encontrado ou sem acesso.');
+    const [assetCategoryGroups, nonPatrimonialCategoryGroups] = await Promise.all([
+      prisma.asset.groupBy({ by: ['categoryId'], where: { poolId: id }, _count: { _all: true } }),
+      prisma.nonPatrimonialItem.groupBy({ by: ['categoryId'], where: { poolId: id, active: true }, _count: { _all: true } }),
+    ]);
+    const categoryIds = new Set([...assetCategoryGroups, ...nonPatrimonialCategoryGroups].map(item => item.categoryId));
     const { profiles, ...data } = pool;
-    return { ...data, stock: stockSummary(profiles), categoryCount: categoryGroups.length };
+    return { ...data, stock: stockSummary(profiles), categoryCount: categoryIds.size };
   });
 
   app.post('/', createPermission, async (request, reply) => {
@@ -98,7 +102,7 @@ export async function poolRoutes(app: FastifyInstance) {
     const data = poolSchema.partial().parse(request.body);
     return serial(async tx => {
       const old = await tx.pool.findFirst({ where: assignedPoolWhere(request, id) });
-      if (!old) fail(404, 'Pool não encontrado.');
+      if (!old) fail(404, 'Setor não encontrado.');
       const updated = await tx.pool.update({ where: { id }, data });
       await audit(request, 'UPDATE', 'Pool', id, old, updated, tx);
       return updated;
@@ -108,14 +112,14 @@ export async function poolRoutes(app: FastifyInstance) {
   app.delete('/:id', deletePermission, async request => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     return serial(async tx => {
-      const pool = await tx.pool.findFirst({ where: assignedPoolWhere(request, id), include: { _count: { select: { assets: true, folders: true, profiles: true } } } });
-      if (!pool) fail(404, 'Pool não encontrado.');
-      if (pool._count.assets || pool._count.folders || pool._count.profiles) {
-        fail(409, 'Este Pool possui ativos, pastas ou perfis de estoque. Reorganize os dados ou inative o Pool para preservar o histórico.');
+      const pool = await tx.pool.findFirst({ where: assignedPoolWhere(request, id), include: { _count: { select: { assets: true, folders: true, profiles: true, nonPatrimonialItems: true } } } });
+      if (!pool) fail(404, 'Setor não encontrado.');
+      if (pool._count.assets || pool._count.folders || pool._count.profiles || pool._count.nonPatrimonialItems) {
+        fail(409, 'Este Setor possui ativos, pastas, perfis de estoque ou itens não patrimoniados. Reorganize os dados ou inative o Setor para preservar o histórico.');
       }
       await tx.pool.delete({ where: { id } });
       await audit(request, 'DELETE', 'Pool', id, pool, undefined, tx);
-      return { message: 'Pool excluído.' };
+      return { message: 'Setor excluído.' };
     });
   });
 }

@@ -116,7 +116,7 @@ export async function stockRoutes(app: FastifyInstance) {
     if (new Set(body.assetIds).size !== body.assetIds.length) fail(400, 'Ativos duplicados no lote.');
     return operation(request, body.requestId, 'ASSIGN', body, async tx => { await writablePool(request, body.poolId, tx); }, async tx => {
       const assets = await tx.asset.findMany({ where: { id: { in: body.assetIds }, poolId: body.poolId } });
-      if (assets.length !== body.assetIds.length) fail(404, 'Um ou mais ativos não existem no Pool autorizado.');
+      if (assets.length !== body.assetIds.length) fail(404, 'Um ou mais ativos não existem no Setor autorizado.');
       const componentIds = await attachComponents(tx, request, assets, body.components, body.requestId);
       return { message: 'Componentes associados.', assets: assets.length, componentIds };
     });

@@ -181,18 +181,18 @@ export default function EditAssetPage() {
       <div className="section-heading">
         <div>
           <h2>{form.patrimonyNumber} - {form.name}</h2>
-          <p>As permissões de Pool também são validadas pelo servidor antes de salvar.</p>
+          <p>As permissões de Setor também são validadas pelo servidor antes de salvar.</p>
         </div>
       </div>
 
       <form onSubmit={save} className="form-grid asset-form">
         <div className="form-field">
-          <label>Pool *</label>
+          <label>Setor *</label>
           <select required disabled={!canMove} value={form.poolId} onChange={e => setForm({ ...form, poolId: e.target.value, folderId: '' })}>
             <option value="">Selecione</option>
             {pools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}{pool.active === false ? ' (inativo)' : ''}</option>)}
           </select>
-          <div className="field-help">{canMove ? 'Ativos com componentes instalados não podem ser transferidos de Pool até os componentes serem devolvidos ou baixados.' : 'Sua conta pode editar o ativo, mas não possui permissão para movimentá-lo entre Pools.'}</div>
+          <div className="field-help">{canMove ? 'Ativos com componentes instalados não podem ser transferidos de Setor até os componentes serem devolvidos ou baixados.' : 'Sua conta pode editar o ativo, mas não possui permissão para movimentá-lo entre Setores.'}</div>
         </div>
 
         <div className="form-field">

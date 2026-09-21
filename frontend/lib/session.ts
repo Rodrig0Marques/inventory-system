@@ -16,7 +16,12 @@ export type PermissionCode =
   | 'CATEGORY_DELETE'
   | 'FOLDER_CREATE'
   | 'FOLDER_DELETE'
-  | 'STOCK_MANAGE';
+  | 'STOCK_MANAGE'
+  | 'NON_PATRIMONIAL_CREATE'
+  | 'NON_PATRIMONIAL_EDIT'
+  | 'NON_PATRIMONIAL_MOVE'
+  | 'NON_PATRIMONIAL_ARCHIVE'
+  | 'IMPORT_NON_PATRIMONIAL';
 
 export const managerDefaultPermissions: PermissionCode[] = [
   'ASSET_CREATE',
@@ -27,6 +32,11 @@ export const managerDefaultPermissions: PermissionCode[] = [
   'FOLDER_CREATE',
   'FOLDER_DELETE',
   'STOCK_MANAGE',
+  'NON_PATRIMONIAL_CREATE',
+  'NON_PATRIMONIAL_EDIT',
+  'NON_PATRIMONIAL_MOVE',
+  'NON_PATRIMONIAL_ARCHIVE',
+  'IMPORT_NON_PATRIMONIAL',
 ];
 
 export function defaultPermissionsForRole(role: UserRole): PermissionCode[] {

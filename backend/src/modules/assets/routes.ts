@@ -85,7 +85,7 @@ export async function assetRoutes(app: FastifyInstance) {
   });
 
   app.get('/global-lookup', async request => {
-    if (!request.canGlobalAssetLookup) fail(403, 'Você não possui permissão para consultar patrimônios fora dos seus Pools.');
+    if (!request.canGlobalAssetLookup) fail(403, 'Você não possui permissão para consultar patrimônios fora dos seus Setores.');
 
     const { patrimony } = z.object({
       patrimony: z.string().trim().min(1, 'Informe pelo menos um patrimônio.').max(5000),
@@ -198,13 +198,13 @@ export async function assetRoutes(app: FastifyInstance) {
       const targetPool = data.poolId ?? previous.poolId;
       await writablePool(request, targetPool, tx);
       const changesPool = targetPool !== previous.poolId;
-      if (changesPool && !hasPermission(request, PermissionCode.ASSET_MOVE)) fail(403, 'Você não possui permissão para movimentar ativos entre Pools.');
+      if (changesPool && !hasPermission(request, PermissionCode.ASSET_MOVE)) fail(403, 'Você não possui permissão para movimentar ativos entre Setores.');
       const effective = { ...previous, ...data, poolId: targetPool,
         folderId: changesPool && data.folderId === undefined ? null : data.folderId === undefined ? previous.folderId : data.folderId,
         assetTypeId: data.categoryId && data.categoryId !== previous.categoryId && data.assetTypeId === undefined ? null : data.assetTypeId === undefined ? previous.assetTypeId : data.assetTypeId };
       await validateAssetLinks(tx, effective);
       if (changesPool || (data.status && ['DISPOSED', 'SOLD', 'LOST', 'INACTIVE'].includes(data.status))) {
-        if (await tx.assetComponent.count({ where: { assetId: id, removedAt: null } })) fail(409, 'Resolva os componentes instalados (devolução ou baixa) antes de transferir o Pool ou baixar/inativar o equipamento.');
+        if (await tx.assetComponent.count({ where: { assetId: id, removedAt: null } })) fail(409, 'Resolva os componentes instalados (devolução ou baixa) antes de transferir o Setor ou baixar/inativar o equipamento.');
       }
       const { customValues, purchasePrice, purchaseDate, ...base } = data;
       const updated = await tx.asset.update({ where: { id }, data: { ...base, folderId: effective.folderId, assetTypeId: effective.assetTypeId,

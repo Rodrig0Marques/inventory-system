@@ -57,7 +57,7 @@ function serialize(user: SelectedUser) {
 
 async function checkPools(tx: Prisma.TransactionClient, ids: string[]) {
   const unique = [...new Set(ids)];
-  if (await tx.pool.count({ where: { id: { in: unique } } }) !== unique.length) fail(400, 'Um dos Pools selecionados não existe.');
+  if (await tx.pool.count({ where: { id: { in: unique } } }) !== unique.length) fail(400, 'Um dos Setores selecionados não existe.');
   return unique;
 }
 

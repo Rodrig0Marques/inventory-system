@@ -25,6 +25,11 @@
 | FOLDER_CREATE | Criar pastas nos Pools permitidos |
 | FOLDER_DELETE | Excluir pastas vazias nos Pools permitidos |
 | STOCK_MANAGE | Criar/editar perfis, movimentar saldos e associar/remover componentes |
+| NON_PATRIMONIAL_CREATE | Cadastrar itens sem patrimonio nos Setores permitidos |
+| NON_PATRIMONIAL_EDIT | Editar dados de itens nao patrimoniados |
+| NON_PATRIMONIAL_MOVE | Entrada, baixa, ajuste e transferencia entre Setores |
+| NON_PATRIMONIAL_ARCHIVE | Arquivar itens com saldo zerado preservando historico |
+| IMPORT_NON_PATRIMONIAL | Importar CSV, XLS, XLSX ou XML de itens nao patrimoniados |
 
 ## Defaults migrados
 
