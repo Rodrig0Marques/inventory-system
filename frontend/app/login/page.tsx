@@ -1,5 +1,6 @@
 'use client';
 
+import { CiaLogo } from '../../components/CiaLogo';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { setSession, type SessionUser } from '../../lib/session';
@@ -41,7 +42,7 @@ export default function LoginPage() {
     <div className="login-backdrop" />
     <section className="login-card">
       <div className="login-brand">
-        <div className="login-mark">I</div>
+        <CiaLogo size={44} />
         <div><strong>Inventário</strong><span>Gestão patrimonial</span></div>
       </div>
       <div className="login-copy">

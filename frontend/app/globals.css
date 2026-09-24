@@ -654,3 +654,30 @@ html[data-theme='dark'] ::selection { background: #315f9e; color: #fff; }
   .non-patrimonial-toolbar { grid-template-columns: 1fr; }
 }
 .non-patrimonial-history-modal { width:min(980px, calc(100vw - 32px)); }
+
+.cia-logo {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+
+  border-radius: 13px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(37, 99, 235, .14),
+      rgba(99, 91, 255, .10)
+    );
+
+  border: 1px solid rgba(112, 157, 255, .22);
+
+  box-shadow:
+    0 8px 24px rgba(27, 61, 130, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .07);
+}
+
+.cia-logo svg {
+  width: 82%;
+  height: 82%;
+  display: block;
+}

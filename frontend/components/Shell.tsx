@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { CiaLogo } from './CiaLogo';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { api } from '../lib/api';
@@ -120,7 +121,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-wrap">
-          <div className="brand-mark">I</div>
+          <CiaLogo size={42} />
           <div>
             <div className="brand">Inventário</div>
             <div className="sidebar-muted">Gestão patrimonial</div>
