@@ -279,10 +279,6 @@ tbody tr:last-child td { border-bottom: 0; }
 .user-avatar { width: 34px; height: 34px; border-radius: 10px; color: #dbeafe; background: rgba(96,165,250,.15); border: 1px solid rgba(147,197,253,.13); }
 .session-user-copy { min-width: 0; }
 .session-user-copy strong, .session-user-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
-.topbar-user { display: flex !important; align-items: center; gap: 9px !important; }
-.topbar-user > div:last-child { display: grid; gap: 1px; }
-.topbar-user strong { font-size: 12px; }
-.topbar-user span { font-size: 10px; }
 .topbar-avatar { width: 32px; height: 32px; border-radius: 9px; background: #edf4ff; color: #315da8; border: 1px solid #dce8ff; }
 .users-layout { display: grid; grid-template-columns: minmax(320px, .9fr) minmax(280px, .65fr); gap: 18px; margin-bottom: 18px; align-items: start; }
 .user-form-card { min-height: 100%; }
@@ -655,29 +651,65 @@ html[data-theme='dark'] ::selection { background: #315f9e; color: #fff; }
 }
 .non-patrimonial-history-modal { width:min(980px, calc(100vw - 32px)); }
 
+/* =========================================
+   LOGO CIA DO CREDITO
+   ========================================= */
+
 .cia-logo {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-
   border-radius: 13px;
 
   background:
     linear-gradient(
       145deg,
-      rgba(37, 99, 235, .14),
-      rgba(99, 91, 255, .10)
+      #f1f6ff,
+      #e9efff
     );
 
-  border: 1px solid rgba(112, 157, 255, .22);
+  border: 1px solid #b8c9eb;
 
   box-shadow:
-    0 8px 24px rgba(27, 61, 130, .18),
-    inset 0 1px 0 rgba(255, 255, 255, .07);
+    0 5px 14px rgba(37, 99, 235, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .cia-logo svg {
-  width: 82%;
-  height: 82%;
+  width: 84%;
+  height: 84%;
   display: block;
+}
+
+/* Linha interna do logo no WHITE MODE */
+.cia-logo-detail {
+  stroke: #334f7d;
+}
+
+/* Ponto */
+.cia-logo-dot {
+  fill: #0891b2;
+}
+
+html[data-theme="dark"] .cia-logo {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(37, 99, 235, 0.18),
+      rgba(99, 91, 255, 0.12)
+    );
+
+  border-color: rgba(112, 157, 255, 0.26);
+
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+html[data-theme="dark"] .cia-logo-detail {
+  stroke: rgba(255, 255, 255, 0.72);
+}
+
+html[data-theme="dark"] .cia-logo-dot {
+  fill: #67e8f9;
 }

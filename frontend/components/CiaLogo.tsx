@@ -39,17 +39,17 @@ export function CiaLogo({
         />
 
         <path
+          className="cia-logo-detail"
           d="M32.4 18.1C30.3 16.1 27.4 15 24.3 15C19.1 15 15 19 15 24C15 29 19.1 33 24.3 33C27.5 33 30.3 31.8 32.4 29.8"
-          stroke="rgba(255,255,255,.72)"
           strokeWidth="2.4"
           strokeLinecap="round"
         />
 
         <circle
+          className="cia-logo-dot"
           cx="35.5"
           cy="24"
           r="2.4"
-          fill="#67E8F9"
         />
       </svg>
     </div>

@@ -47,7 +47,7 @@ export default function LoginPage() {
       </div>
       <div className="login-copy">
         <div className="eyebrow">Acesso interno</div>
-        <h1>Bem-vindo.</h1>
+        <h1>Bem-vindo !</h1>
         <p>Entre para consultar e administrar os ativos da empresa.</p>
       </div>
       <form onSubmit={submit}>

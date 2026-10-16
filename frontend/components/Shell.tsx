@@ -165,7 +165,6 @@ export function Shell({ children }: { children: ReactNode }) {
         <header className="topbar">
           <div>
             <strong>Inventário corporativo</strong>
-            <span>Controle centralizado de inventário</span>
           </div>
           <div className="topbar-actions">
             <button
@@ -178,10 +177,6 @@ export function Shell({ children }: { children: ReactNode }) {
               <ThemeIcon theme={theme} />
               <span>{theme === 'dark' ? 'Claro' : 'Escuro'}</span>
             </button>
-            <div className="topbar-user">
-              <div className="topbar-avatar">{user?.name?.slice(0, 1).toUpperCase() || 'U'}</div>
-              <div><strong>{user?.name || 'Usuário'}</strong><span>{user ? roleLabel(user.role) : ''}</span></div>
-            </div>
           </div>
         </header>
         <div className="content">{children}</div>
