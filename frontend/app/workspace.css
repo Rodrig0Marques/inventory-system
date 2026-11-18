@@ -5,6 +5,8 @@
   --text: #1b2b45; --navy: #1b2b45; --subtle: #63718a; --muted: #63718a;
   --border: #e3e9f2; --control-border: #cbd4e3; --placeholder: #738097;
   --shadow: 0 3px 14px #20345c04;
+  --scrollbar-thumb: #7587a1; --scrollbar-thumb-hover: #526d95;
+  --scrollbar-track: transparent;
   font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
 }
 html[data-theme='dark'] {
@@ -12,6 +14,34 @@ html[data-theme='dark'] {
   --text: #e5edf9; --navy: #e5edf9; --subtle: #a3b2ca; --muted: #a3b2ca;
   --border: #2a3850; --control-border: #465a79; --placeholder: #97a8c1;
   --accent: #8caeff; --blue-soft: #1e3153; --shadow: 0 4px 18px #0000000a;
+  --scrollbar-thumb: #607698; --scrollbar-thumb-hover: #8ca6ca;
+}
+/* Keep native wheel, touch and keyboard scrolling with a shared visual style. */
+*, .table-wrap { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
+.modern-workspace .sidebar {
+  --scrollbar-thumb: #607698; --scrollbar-thumb-hover: #8ca6ca;
+  overflow-x: hidden; overscroll-behavior-y: contain;
+}
+.modern-workspace .sidebar:hover, .modern-workspace .sidebar:focus-within {
+  scrollbar-color: var(--scrollbar-thumb-hover) var(--scrollbar-track);
+}
+/* WebKit scrollbars support rounded thumbs and remove the arrow buttons. */
+@supports selector(::-webkit-scrollbar) {
+  *, .table-wrap { scrollbar-width: auto; scrollbar-color: auto; }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  *::-webkit-scrollbar-thumb { min-height: 32px; border: 2px solid transparent; border-radius: 999px; background: var(--scrollbar-thumb); background-clip: padding-box; }
+  *::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
+  *::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
+  *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  *::-webkit-scrollbar-corner { background: transparent; }
+  .modern-workspace .sidebar { scrollbar-width: auto; scrollbar-color: auto; }
+  .modern-workspace .sidebar:hover, .modern-workspace .sidebar:focus-within { scrollbar-color: auto; }
+}
+@media (forced-colors: active) {
+  *, .table-wrap { scrollbar-width: auto; scrollbar-color: auto; }
+  *::-webkit-scrollbar-thumb, *::-webkit-scrollbar-thumb:hover, *::-webkit-scrollbar-thumb:active { background-color: ButtonText; }
+  .modern-workspace .sidebar, .modern-workspace .sidebar:hover, .modern-workspace .sidebar:focus-within { scrollbar-color: auto; }
 }
 body { background: var(--canvas); font-size: 14px; }
 button, a, input, select, textarea { transition: background-color .16s, border-color .16s, color .16s, box-shadow .16s; }
