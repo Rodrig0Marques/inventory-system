@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { CiaLogo } from './CiaLogo';
 import { Icon } from './Icon';
 import { CommandMenu } from './CommandMenu';
+import { AccountMenu } from './AccountMenu';
 import { navigation } from '../lib/navigation';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { clearSession, getSessionUser, roleLabel, setSessionUser, type SessionUser } from '../lib/session';
+import { clearSession, getSessionUser, setSessionUser, type SessionUser } from '../lib/session';
 
 type Theme = 'light' | 'dark';
 const THEME_KEY = 'inventory_theme';
@@ -226,16 +227,6 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="sidebar-footer">
           <button className="sidebar-command" type="button" onClick={() => { setMenuOpen(false); setCommandOpen(true); }} title="Busca rápida (Ctrl K)"><Icon name="command" /><span>Busca rápida</span><kbd>Ctrl K</kbd></button>
           <div className="workspace-card"><span className="workspace-emblem"><Icon name="shield" /></span><div><strong>Cia do Crédito</strong><small>Espaço corporativo</small></div><span className="workspace-dot" aria-hidden="true" /></div>
-          <div className="session-card">
-            <div className="user-avatar">{user?.name?.slice(0, 1).toUpperCase() || 'U'}</div>
-            <div className="session-user-copy">
-              <strong>{user?.name || 'Usuário'}</strong>
-              <small>{user ? roleLabel(user.role) : 'Sessão ativa'}</small>
-            </div>
-          </div>
-          <button className="logout-button" aria-label="Sair da conta" title={collapsed ? 'Sair da conta' : undefined} onClick={() => { clearSession(); router.push('/login'); }}>
-            <Icon name="logout" /><span>Sair da conta</span>
-          </button>
         </div>
       </aside>
 
@@ -259,7 +250,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <ThemeIcon theme={theme} />
               <span>{theme === 'dark' ? 'Claro' : 'Escuro'}</span>
             </button>
-            <div className="topbar-user" title={user?.name || 'Usuário'}><span className="user-avatar">{user?.name?.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'U'}</span></div>
+            <AccountMenu user={user} onSignOut={() => { clearSession(); setReady(false); setUser(null); router.replace('/login'); }} />
           </div>
         </header>
         {!online && <div className="connection-notice" role="status"><Icon name="alert" />Você está sem conexão. Reconecte para consultar ou salvar alterações.</div>}
