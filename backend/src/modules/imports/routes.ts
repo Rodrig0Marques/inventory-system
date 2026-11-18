@@ -1,13 +1,19 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { createHash, randomUUID } from 'node:crypto';
 import { ImportKind, NonPatrimonialMovementType, PermissionCode, Prisma } from '@prisma/client';
 import { XMLParser } from 'fast-xml-parser';
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import { prisma } from '../../plugins/prisma.js';
 import { poolWhere, poolScope, writablePool, fail } from '../../utils/access.js';
-import { serial } from '../../utils/transaction.js';
+import { operation } from '../../utils/transaction.js';
 import { audit } from '../../utils/audit.js';
 import { nextNonPatrimonialCode } from '../non-patrimonial/service.js';
+import { validateCustomValues } from '../assets/custom-fields.js';
+import { readImportErrors, rejectedRowsCsv, type ImportError } from './reports.js';
+
+const importModeSchema = z.enum(['CREATE', 'UPDATE', 'SET_BALANCE']);
+type ImportMode = z.infer<typeof importModeSchema>;
 
 type RawRow = Record<string, unknown>;
 
@@ -34,6 +40,8 @@ type ResolvedRow = NormalizedRow & {
   categoryResolvedName?: string;
   errors: string[];
   action?: 'CREATE' | 'UPDATE';
+  existingItemId?: string;
+  version?: string;
 };
 
 function normalizeKey(key: string) {
@@ -144,7 +152,7 @@ function buildReferenceMap<T extends { id: string; name: string }>(items: T[]) {
 async function validateRows(rows: RawRow[], request: FastifyRequest): Promise<ResolvedRow[]> {
   const [pools, categories] = await Promise.all([
     prisma.pool.findMany({ where: { ...poolWhere(request), active: true }, select: { id: true, name: true } }),
-    prisma.category.findMany({ select: { id: true, name: true } }),
+    prisma.category.findMany({ select: { id: true, name: true, customFields: true } }),
   ]);
 
   const poolMap = buildReferenceMap(pools);
@@ -209,11 +217,19 @@ async function validateRows(rows: RawRow[], request: FastifyRequest): Promise<Re
       where: {
         OR: candidates.map((row) => ({ poolId: row.poolId!, patrimonyNumber: row.patrimonyNumber })),
       },
-      select: { poolId: true, patrimonyNumber: true },
+      select: { id: true, poolId: true, patrimonyNumber: true, categoryId: true, updatedAt: true, archivedAt: true, customValues: { include: { customField: true } } },
     });
     const existingKeys = new Set(existing.map((item) => `${item.poolId}::${item.patrimonyNumber}`));
     for (const row of candidates) {
       row.action = existingKeys.has(`${row.poolId}::${row.patrimonyNumber}`) ? 'UPDATE' : 'CREATE';
+      const current = existing.find(item => item.poolId === row.poolId && item.patrimonyNumber === row.patrimonyNumber);
+      row.existingItemId = current?.id;
+      row.version = current?.updatedAt.toISOString();
+      if (current?.archivedAt) row.errors.push('Reative o ativo antes de atualizar por importação.');
+      const fields = categories.find(category => category.id === row.categoryId)?.customFields || [];
+      const values = current && current.categoryId === row.categoryId ? Object.fromEntries(current.customValues.map(value => [value.customField.key, value.value])) : {};
+      try { validateCustomValues(fields, values); }
+      catch (error) { row.errors.push(error instanceof Error ? error.message : 'Campos específicos da categoria inválidos.'); }
     }
   }
 
@@ -291,6 +307,8 @@ type NonPatrimonialResolvedRow = NonPatrimonialNormalizedRow & {
   existingItemId?: string;
   errors: string[];
   action?: 'CREATE' | 'UPDATE';
+  quantityBefore?: number;
+  version?: string;
 };
 
 function parseQuantity(value: unknown) {
@@ -321,7 +339,7 @@ function normalizeNonPatrimonialRow(row: RawRow): NonPatrimonialNormalizedRow {
   };
 }
 
-async function validateNonPatrimonialRows(rows: RawRow[], request: FastifyRequest): Promise<NonPatrimonialResolvedRow[]> {
+async function validateNonPatrimonialRows(rows: RawRow[], request: FastifyRequest, mode: ImportMode = 'CREATE'): Promise<NonPatrimonialResolvedRow[]> {
   const [pools, categories] = await Promise.all([
     prisma.pool.findMany({ where: { ...poolWhere(request), active: true }, select: { id: true, name: true } }),
     prisma.category.findMany({ select: { id: true, name: true } }),
@@ -333,7 +351,7 @@ async function validateNonPatrimonialRows(rows: RawRow[], request: FastifyReques
   const existingItems = requestedCodes.length
     ? await prisma.nonPatrimonialItem.findMany({
         where: { internalCode: { in: requestedCodes }, ...poolScope(request) },
-        select: { id: true, internalCode: true, poolId: true },
+        select: { id: true, internalCode: true, poolId: true, quantity: true, updatedAt: true, active: true },
       })
     : [];
   const existingByCode = new Map(existingItems.map(item => [item.internalCode.toUpperCase(), item]));
@@ -353,7 +371,7 @@ async function validateNonPatrimonialRows(rows: RawRow[], request: FastifyReques
     if (!normalized.name) errors.push('Nome é obrigatório.');
     if (!normalized.poolName) errors.push('Setor é obrigatório.');
     if (!normalized.categoryName) errors.push('Categoria é obrigatória.');
-    if (!normalized.quantityWasProvided || !normalized.quantityIsValid) errors.push('Quantidade é obrigatória e deve ser um inteiro entre 0 e 1.000.000.');
+    if (mode !== 'UPDATE' && (!normalized.quantityWasProvided || !normalized.quantityIsValid)) errors.push('Quantidade é obrigatória e deve ser um inteiro entre 0 e 1.000.000.');
 
     if (normalized.poolName) {
       const matches = poolMap.get(normalizeReference(normalized.poolName)) ?? [];
@@ -382,6 +400,7 @@ async function validateNonPatrimonialRows(rows: RawRow[], request: FastifyReques
       if (!existing) errors.push(`Código interno "${normalized.internalCode}" não encontrado. Deixe o código em branco para criar um novo item.`);
       else {
         existingItemId = existing.id;
+        if (!existing.active) errors.push('Reative o item antes de importar alterações.');
         if (poolId && existing.poolId !== poolId) errors.push('O Setor informado é diferente do Setor atual do item. Use a movimentação entre Setores no sistema.');
       }
     }
@@ -394,6 +413,8 @@ async function validateNonPatrimonialRows(rows: RawRow[], request: FastifyReques
       poolResolvedName,
       categoryResolvedName,
       existingItemId,
+      quantityBefore: existingItemId ? existingByCode.get(normalized.internalCode)?.quantity : 0,
+      version: existingItemId ? existingByCode.get(normalized.internalCode)?.updatedAt.toISOString() : undefined,
       errors,
       action: normalized.internalCode && existingItemId ? 'UPDATE' : 'CREATE',
     });
@@ -454,6 +475,24 @@ export async function importRoutes(app: FastifyInstance) {
     return request.poolIds === null ? jobs : jobs.filter(job => job.poolIds.every(id => request.poolIds!.includes(id)));
   });
 
+  const readableJob = async (request: FastifyRequest, id: string) => {
+    const job = await prisma.importJob.findFirst({ where: { id, ...(request.poolIds === null ? {} : { userId: request.user.sub }) } });
+    if (!job || (request.poolIds !== null && !job.poolIds.every(poolId => request.poolIds!.includes(poolId)))) fail(404, 'Importação não encontrada ou sem acesso.');
+    return job;
+  };
+  app.get('/:id', async request => {
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const job = await readableJob(request, id);
+    return { ...job, errors: readImportErrors(job.errors) };
+  });
+  app.get('/:id/errors.csv', async (request, reply) => {
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const job = await readableJob(request, id);
+    return reply.header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', 'attachment; filename="linhas_rejeitadas.csv"')
+      .send(rejectedRowsCsv(readImportErrors(job.errors)));
+  });
+
   app.get('/template', async (request, reply) => {
     const [pools, categories] = await Promise.all([
       prisma.pool.findMany({ where: { ...poolWhere(request), active: true }, orderBy: { name: 'asc' }, select: { name: true } }),
@@ -479,188 +518,93 @@ export async function importRoutes(app: FastifyInstance) {
       .send(file);
   });
 
-  app.post('/non-patrimonial/preview', { preHandler: app.requirePermission(PermissionCode.IMPORT_NON_PATRIMONIAL) }, async (request, reply) => {
-    const data = await request.file();
-    if (!data) return reply.status(400).send({ message: 'Arquivo obrigatório.' });
-    const buffer = await data.toBuffer();
-    const { rows } = await readRows(data.filename, buffer);
-    if (!rows.length) return reply.status(400).send({ message: 'Nenhum registro foi encontrado no arquivo.' });
-    const validated = await validateNonPatrimonialRows(rows, request);
-    return nonPatrimonialPreviewPayload(data.filename, validated);
-  });
-
-  app.post('/non-patrimonial', { preHandler: app.requirePermission(PermissionCode.IMPORT_NON_PATRIMONIAL) }, async (request, reply) => {
-    const data = await request.file();
-    if (!data) return reply.status(400).send({ message: 'Arquivo obrigatório.' });
-    const buffer = await data.toBuffer();
-    const { extension, rows } = await readRows(data.filename, buffer);
-    if (!rows.length) return reply.status(400).send({ message: 'Nenhum registro foi encontrado no arquivo.' });
-
-    const validated = await validateNonPatrimonialRows(rows, request);
-    let successRows = 0;
-    const errors: Array<{ row: number; internalCode: string | null; message: string }> = validated
-      .filter(row => row.errors.length > 0)
-      .map(row => ({ row: row.row, internalCode: row.internalCode || null, message: row.errors.join(' ') }));
-
-    for (const row of validated.filter(item => item.errors.length === 0 && item.poolId && item.categoryId && item.quantity !== undefined)) {
-      try {
-        await serial(async tx => {
-          await writablePool(request, row.poolId!, tx);
-          if (!await tx.category.findUnique({ where: { id: row.categoryId! } })) fail(400, 'Categoria removida após a análise.');
-
-          if (row.existingItemId) {
-            const current = await tx.nonPatrimonialItem.findUnique({ where: { id: row.existingItemId } });
-            if (!current) fail(409, 'Item removido após a análise.');
-            if (current.poolId !== row.poolId) fail(409, 'O Setor do item foi alterado. Faça uma nova análise.');
-            const updated = await tx.nonPatrimonialItem.update({
-              where: { id: current.id },
-              data: {
-                name: row.name,
-                description: row.description,
-                manufacturer: row.manufacturer,
-                model: row.model,
-                quantity: row.quantity!,
-                location: row.location,
-                responsible: row.responsible,
-                categoryId: row.categoryId!,
-                active: true,
-              },
-            });
-            if (current.quantity !== row.quantity) {
-              await tx.nonPatrimonialMovement.create({ data: {
-                itemId: current.id,
-                userId: request.user.sub,
-                type: NonPatrimonialMovementType.IMPORT_SET,
-                quantity: Math.abs(row.quantity! - current.quantity),
-                quantityBefore: current.quantity,
-                quantityAfter: row.quantity!,
-                fromPoolId: current.poolId,
-                toPoolId: current.poolId,
-                notes: `Saldo definido pela importação ${data.filename}.`,
-              } });
-            }
-            await audit(request, 'IMPORT_UPDATE', 'NonPatrimonialItem', current.id, current, updated, tx);
-          } else {
-            const internalCode = await nextNonPatrimonialCode(tx);
-            const created = await tx.nonPatrimonialItem.create({ data: {
-              internalCode,
-              name: row.name,
-              description: row.description,
-              manufacturer: row.manufacturer,
-              model: row.model,
-              quantity: row.quantity!,
-              location: row.location,
-              responsible: row.responsible,
-              poolId: row.poolId!,
-              categoryId: row.categoryId!,
-            } });
-            if (row.quantity! > 0) {
-              await tx.nonPatrimonialMovement.create({ data: {
-                itemId: created.id,
-                userId: request.user.sub,
-                type: NonPatrimonialMovementType.INITIAL,
-                quantity: row.quantity!,
-                quantityBefore: 0,
-                quantityAfter: row.quantity!,
-                toPoolId: row.poolId!,
-                notes: `Cadastro pela importação ${data.filename}.`,
-              } });
-            }
-            await audit(request, 'IMPORT_CREATE', 'NonPatrimonialItem', created.id, undefined, created, tx);
-          }
-        });
-        successRows++;
-      } catch (error) {
-        errors.push({
-          row: row.row,
-          internalCode: row.internalCode || null,
-          message: error instanceof Error && 'statusCode' in error ? error.message : 'Falha ao gravar a linha. Verifique os vínculos e tente novamente.',
-        });
+  // The confirmation is bound to a persisted preview. Retries reuse its UUID.
+  for (const kind of [ImportKind.ASSET, ImportKind.NON_PATRIMONIAL]) {
+    const path = kind === ImportKind.ASSET ? '/assets' : '/non-patrimonial';
+    const permission = kind === ImportKind.ASSET ? PermissionCode.IMPORT_ASSETS : PermissionCode.IMPORT_NON_PATRIMONIAL;
+    app.post(`${path}/preview`, { preHandler: app.requirePermission(permission) }, async (request, reply) => {
+      const { mode } = z.object({ mode: importModeSchema.default('CREATE') }).parse(request.query);
+      if (kind === ImportKind.ASSET && mode === 'SET_BALANCE') fail(400, 'Ativos individuais não possuem saldo.');
+      const file = await request.file();
+      if (!file) fail(400, 'Arquivo obrigatório.');
+      const buffer = await file.toBuffer();
+      const { extension, rows } = await readRows(file.filename, buffer);
+      if (!rows.length) fail(400, 'Nenhum registro encontrado.');
+      if (rows.length > 5000) fail(400, 'Use arquivos com até 5.000 linhas por importação.');
+      const fileHash = createHash('sha256').update(buffer).digest('hex');
+      const signature = createHash('sha256').update(JSON.stringify({ kind, mode, fileHash })).digest('hex');
+      if (mode === 'CREATE' && await prisma.stockOperation.findFirst({ where: { userId: request.user.sub, kind: 'IMPORT_COMPLETE', inputHash: signature } })) fail(409, 'Este arquivo já foi processado neste modo. Consulte o histórico antes de criar outra carga.');
+      const validated = kind === ImportKind.ASSET ? await validateRows(rows, request) : await validateNonPatrimonialRows(rows, request, mode);
+      for (const row of validated) {
+        if (mode === 'CREATE' && row.existingItemId) row.errors.push('O registro já existe. Use o modo Atualizar cadastro.');
+        if (mode !== 'CREATE' && !row.existingItemId) row.errors.push('O registro precisa existir neste modo. Informe seu código e Setor corretos.');
       }
-    }
-
-    const job = await prisma.importJob.create({
-      data: {
-        kind: ImportKind.NON_PATRIMONIAL,
-        userId: request.user.sub,
-        poolIds: [...new Set(validated.flatMap(row => row.poolId ? [row.poolId] : []))],
-        fileName: data.filename,
-        fileType: extension,
-        totalRows: rows.length,
-        successRows,
-        errorRows: errors.length,
-        errors,
-      },
-    });
-    return reply.status(errors.length ? 207 : 201).send(job);
-  });
-
-  app.post('/assets/preview', { preHandler: app.requirePermission(PermissionCode.IMPORT_ASSETS) }, async (request, reply) => {
-    const data = await request.file();
-    if (!data) return reply.status(400).send({ message: 'Arquivo obrigatório.' });
-
-    const buffer = await data.toBuffer();
-    const { rows } = await readRows(data.filename, buffer);
-    if (!rows.length) return reply.status(400).send({ message: 'Nenhum registro foi encontrado no arquivo.' });
-
-    const validated = await validateRows(rows, request);
-    return previewPayload(data.filename, validated);
-  });
-
-  app.post('/assets', { preHandler: app.requirePermission(PermissionCode.IMPORT_ASSETS) }, async (request, reply) => {
-    const data = await request.file();
-    if (!data) return reply.status(400).send({ message: 'Arquivo obrigatório.' });
-
-    const buffer = await data.toBuffer();
-    const { extension, rows } = await readRows(data.filename, buffer);
-    if (!rows.length) return reply.status(400).send({ message: 'Nenhum registro foi encontrado no arquivo.' });
-
-    const validated = await validateRows(rows, request);
-    let successRows = 0;
-    const errors: Array<{ row: number; patrimonyNumber: string | null; message: string }> = validated
-      .filter((row) => row.errors.length > 0)
-      .map((row) => ({ row: row.row, patrimonyNumber: row.patrimonyNumber || null, message: row.errors.join(' ') }));
-
-    for (const row of validated.filter((item) => item.errors.length === 0 && item.poolId && item.categoryId)) {
-      try {
-        await serial(async tx => {
-          await writablePool(request, row.poolId!, tx);
-          if (!await tx.category.findUnique({ where: { id: row.categoryId! } })) fail(400, 'Categoria removida após a análise.');
-          const current = await tx.asset.findUnique({ where: { poolId_patrimonyNumber: { poolId: row.poolId!, patrimonyNumber: row.patrimonyNumber } } });
-          const data = {
-            name: row.name, description: row.description, manufacturer: row.manufacturer, model: row.model,
-            ...(row.priceWasProvided ? { purchasePrice: new Prisma.Decimal(row.purchasePrice!) } : {}),
-            location: row.location, responsible: row.responsible, categoryId: row.categoryId!,
-          };
-          if (current && current.categoryId !== row.categoryId) await tx.assetCustomValue.deleteMany({ where: { assetId: current.id } });
-          const asset = current ? await tx.asset.update({ where: { id: current.id }, data: { ...data, ...(current.categoryId !== row.categoryId ? { assetTypeId: null } : {}) } }) :
-            await tx.asset.create({ data: { ...data, poolId: row.poolId!, patrimonyNumber: row.patrimonyNumber } });
-          await audit(request, current ? 'IMPORT_UPDATE' : 'IMPORT_CREATE', 'Asset', asset.id, current ?? undefined, asset, tx);
-        });
-        successRows++;
-      } catch (error) {
-        errors.push({
-          row: row.row,
-          patrimonyNumber: row.patrimonyNumber,
-          message: error instanceof Error && 'statusCode' in error ? error.message : 'Falha ao gravar a linha. Verifique duplicidade ou conflito de dados.',
-        });
-      }
-    }
-
-    const job = await prisma.importJob.create({
-      data: {
-        kind: ImportKind.ASSET,
-        userId: request.user.sub,
-        poolIds: [...new Set(validated.flatMap(row => row.poolId ? [row.poolId] : []))],
-        fileName: data.filename,
-        fileType: extension,
-        totalRows: rows.length,
-        successRows,
-        errorRows: errors.length,
-        errors,
-      },
+      const previewId = randomUUID();
+      const snapshot = { kind, mode, fileHash, fileName: file.filename, extension, rows: validated.map((row, index) => ({ ...row, sourceData: rows[index] })) };
+      await prisma.stockOperation.create({ data: { id: previewId, userId: request.user.sub, kind: 'IMPORT_PREVIEW', inputHash: signature, result: JSON.parse(JSON.stringify(snapshot)) } });
+      const payload = kind === ImportKind.ASSET ? previewPayload(file.filename, validated as ResolvedRow[]) : nonPatrimonialPreviewPayload(file.filename, validated as NonPatrimonialResolvedRow[]);
+      return { ...payload, previewId, mode, rows: payload.rows.map((row, index) => ({ ...row, quantityBefore: (validated[index] as NonPatrimonialResolvedRow).quantityBefore ?? null, quantityAfter: kind === ImportKind.NON_PATRIMONIAL ? (mode === 'UPDATE' ? (validated[index] as NonPatrimonialResolvedRow).quantityBefore : (validated[index] as NonPatrimonialResolvedRow).quantity) : null })) };
     });
 
-    return reply.status(errors.length ? 207 : 201).send(job);
-  });
+    app.post(path, { preHandler: app.requirePermission(permission) }, async (request, reply) => {
+      const previewId = z.string().uuid('Analise o arquivo antes de confirmar a importação.').parse(request.headers['x-request-id']);
+      const preview = await prisma.stockOperation.findUnique({ where: { id: previewId } });
+      if (!preview || preview.kind !== 'IMPORT_PREVIEW' || preview.userId !== request.user.sub) fail(404, 'Análise não encontrada ou sem acesso.');
+      const snapshot = preview.result as unknown as { kind: ImportKind; mode: ImportMode; fileHash: string; fileName: string; extension: string; rows: Array<ResolvedRow & Partial<NonPatrimonialResolvedRow> & { sourceData?: RawRow }> };
+      if (snapshot.kind !== kind) fail(409, 'A análise pertence a outro tipo de importação.');
+      const file = await request.file();
+      if (!file) fail(400, 'Arquivo obrigatório.');
+      const buffer = await file.toBuffer();
+      if (createHash('sha256').update(buffer).digest('hex') !== snapshot.fileHash) fail(409, 'O arquivo mudou. Faça uma nova análise.');
+      const pools = [...new Set(snapshot.rows.flatMap(row => row.poolId && !row.errors.length ? [row.poolId] : []))];
+      const authorize = async (tx: Prisma.TransactionClient) => { for (const id of pools) await writablePool(request, id, tx); };
+      await prisma.$transaction(authorize);
+      const executionId = snapshot.mode === 'CREATE' ? `${request.user.sub}:${preview.inputHash}` : previewId;
+      const completed = await prisma.stockOperation.findUnique({ where: { id: `${executionId}:complete` } });
+      if (completed) {
+        const job = completed.result as unknown as { errorRows: number };
+        return reply.status(job.errorRows ? 207 : 201).send(job);
+      }
+      if (Date.now() - preview.createdAt.getTime() > 24 * 60 * 60 * 1000) fail(409, 'Análise expirada. Analise o arquivo novamente.');
+      let successRows = 0;
+      const errors: ImportError[] = snapshot.rows.filter(row => row.errors.length).map(row => ({ row: row.row, message: row.errors.join(' '), data: row.sourceData }));
+      for (const row of snapshot.rows.filter(row => !row.errors.length && row.poolId && row.categoryId)) {
+        try {
+          await operation(request, `${executionId}:row:${row.row}`, 'IMPORT_ROW', { kind, mode: snapshot.mode, fileHash: snapshot.fileHash, row: row.row }, async tx => { await writablePool(request, row.poolId!, tx); }, async tx => {
+            if (!await tx.category.findUnique({ where: { id: row.categoryId! } })) fail(409, 'Categoria removida após a análise.');
+            if (kind === ImportKind.ASSET) {
+              const current = row.existingItemId ? await tx.asset.findUnique({ where: { id: row.existingItemId } }) : null;
+              if (snapshot.mode === 'UPDATE' && (!current || current.archivedAt || current.poolId !== row.poolId || current.updatedAt.toISOString() !== row.version)) fail(409, 'O ativo mudou após a análise. Analise novamente.');
+              if (snapshot.mode === 'CREATE' && await tx.asset.findFirst({ where: { poolId: row.poolId, patrimonyNumber: { equals: row.patrimonyNumber, mode: 'insensitive' } } })) fail(409, 'O patrimônio já existe neste Setor.');
+              const fields = await tx.customField.findMany({ where: { categoryId: row.categoryId! } });
+              const retained = current && current.categoryId === row.categoryId ? await tx.assetCustomValue.findMany({ where: { assetId: current.id }, include: { customField: true } }) : [];
+              validateCustomValues(fields, Object.fromEntries(retained.map(value => [value.customField.key, value.value])));
+              const values = { name: row.name, description: row.description, manufacturer: row.manufacturer, model: row.model, ...(row.priceWasProvided ? { purchasePrice: new Prisma.Decimal(row.purchasePrice!) } : {}), location: row.location, responsible: row.responsible, categoryId: row.categoryId! };
+              if (current && current.categoryId !== row.categoryId) await tx.assetCustomValue.deleteMany({ where: { assetId: current.id } });
+              const asset = current ? await tx.asset.update({ where: { id: current.id }, data: { ...values, ...(current.categoryId !== row.categoryId ? { assetTypeId: null } : {}) } }) : await tx.asset.create({ data: { ...values, poolId: row.poolId!, patrimonyNumber: row.patrimonyNumber } });
+              if (current && (current.location !== asset.location || current.responsible !== asset.responsible)) await tx.assetMovement.create({ data: { assetId: asset.id, fromPoolId: current.poolId, toPoolId: asset.poolId, fromLocation: current.location, toLocation: asset.location, fromResponsible: current.responsible, toResponsible: asset.responsible, notes: `Atualização pela importação ${snapshot.fileName}.` } });
+              await audit(request, current ? 'IMPORT_UPDATE' : 'IMPORT_CREATE', 'Asset', asset.id, current || undefined, asset, tx);
+            } else {
+              const current = row.existingItemId ? await tx.nonPatrimonialItem.findUnique({ where: { id: row.existingItemId } }) : null;
+              if (snapshot.mode !== 'CREATE' && (!current || !current.active || current.poolId !== row.poolId || current.updatedAt.toISOString() !== row.version)) fail(409, 'O item ou saldo mudou após a análise. Analise novamente.');
+              if (snapshot.mode === 'SET_BALANCE') {
+                const updated = await tx.nonPatrimonialItem.update({ where: { id: current!.id }, data: { quantity: row.quantity! } });
+                if (current!.quantity !== updated.quantity) await tx.nonPatrimonialMovement.create({ data: { itemId: updated.id, userId: request.user.sub, type: NonPatrimonialMovementType.IMPORT_SET, quantity: Math.abs(updated.quantity - current!.quantity), quantityBefore: current!.quantity, quantityAfter: updated.quantity, fromPoolId: updated.poolId, toPoolId: updated.poolId, notes: `Saldo definido pela importação ${snapshot.fileName}.` } });
+                await audit(request, 'IMPORT_SET_BALANCE', 'NonPatrimonialItem', updated.id, current, updated, tx);
+              } else {
+                const values = { name: row.name, description: row.description, manufacturer: row.manufacturer, model: row.model, location: row.location, responsible: row.responsible, categoryId: row.categoryId! };
+                const item = current ? await tx.nonPatrimonialItem.update({ where: { id: current.id }, data: values }) : await tx.nonPatrimonialItem.create({ data: { ...values, poolId: row.poolId!, internalCode: await nextNonPatrimonialCode(tx), quantity: row.quantity! } });
+                if (!current && item.quantity) await tx.nonPatrimonialMovement.create({ data: { itemId: item.id, userId: request.user.sub, type: NonPatrimonialMovementType.INITIAL, quantity: item.quantity, quantityBefore: 0, quantityAfter: item.quantity, toPoolId: item.poolId, notes: `Cadastro pela importação ${snapshot.fileName}.` } });
+                await audit(request, current ? 'IMPORT_UPDATE' : 'IMPORT_CREATE', 'NonPatrimonialItem', item.id, current || undefined, item, tx);
+              }
+            }
+            return { row: row.row, success: true };
+          });
+          successRows++;
+        } catch (error) { errors.push({ row: row.row, message: error instanceof Error && 'statusCode' in error ? error.message : 'Falha ao gravar a linha. Verifique os vínculos.', data: row.sourceData }); }
+      }
+      const job = await operation(request, `${executionId}:complete`, 'IMPORT_COMPLETE', { kind, mode: snapshot.mode, fileHash: snapshot.fileHash }, authorize, tx => tx.importJob.create({ data: { kind, userId: request.user.sub, poolIds: pools, fileName: snapshot.fileName, fileType: snapshot.extension, totalRows: snapshot.rows.length, successRows, errorRows: errors.length, errors: JSON.parse(JSON.stringify(errors)) } }));
+      return reply.status(job.errorRows ? 207 : 201).send(job);
+    });
+  }
 }

@@ -178,6 +178,7 @@ model Asset {
   assetTypeId     String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+  archivedAt      DateTime?
   pool            Pool        @relation(fields: [poolId], references: [id], onDelete: Restrict)
   folder          Folder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
   category        Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -272,6 +273,8 @@ enum StockMovementType {
   REGISTER_INSTALLED
   RETURN_TO_STOCK
   RETIRE_INSTALLED
+  TRANSFER_OUT
+  TRANSFER_IN
 }
 
 // A reusable technical profile, not a physical unit. It is scoped to a pool.

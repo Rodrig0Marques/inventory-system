@@ -39,9 +39,9 @@ Não use REGISTER_INSTALLED para a mesma unidade física já cadastrada como dis
 
 RETURN_TO_STOCK reduz instalados e aumenta disponíveis; o total não muda. RETIRE_INSTALLED reduz instalados e total sem aumentar disponíveis. Ambas exigem quantidade válida e motivo. As movimentações de estoque são mantidas como histórico.
 
-Perfil sem unidades pode ser arquivado. Arquivo não apaga seu histórico nem libera seu nome para reutilização no mesmo Pool. Esta entrega não possui tela de restauração de perfis arquivados.
+Perfil sem unidades pode ser arquivado. Arquivo não apaga seu histórico nem libera seu nome para reutilização no mesmo Pool. O filtro de arquivados no catálogo permite consultar e reativar os perfis.
 
-Excluir, inativar, baixar ou transferir para outro Pool um equipamento com componentes instalados é bloqueado. Primeiro resolva seus componentes. Transferência direta de componentes entre Pools não foi implementada.
+Arquivar, inativar ou baixar um equipamento com componentes instalados exige resolver seus componentes. A transferência entre Pools pode levar os componentes junto com o equipamento, mediante permissões de movimentação de ativos e estoque. Componentes disponíveis também podem ser transferidos diretamente pelo catálogo. As duas operações validam a compatibilidade dos perfis no destino, preservam o total global e gravam os movimentos atomicamente. Consulte os contratos atualizados em `REVISAO_FLUXOS_2026_11.md`.
 
 ## Categorias hierárquicas
 

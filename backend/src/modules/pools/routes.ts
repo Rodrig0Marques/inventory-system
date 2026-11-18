@@ -51,7 +51,7 @@ export async function poolRoutes(app: FastifyInstance) {
       where: poolListWhere(request),
       orderBy: { name: 'asc' },
       include: {
-        _count: { select: { assets: true, folders: true, nonPatrimonialItems: { where: { active: true } } } },
+        _count: { select: { assets: { where: { archivedAt: null } }, folders: true, nonPatrimonialItems: { where: { active: true } } } },
         profiles: {
           where: { active: true },
           select: { availableQty: true, components: { where: { removedAt: null }, select: { quantity: true } } },
@@ -66,7 +66,7 @@ export async function poolRoutes(app: FastifyInstance) {
     const pool = await prisma.pool.findFirst({
       where: poolReadWhere(request, id),
       include: {
-        _count: { select: { assets: true, folders: true, nonPatrimonialItems: { where: { active: true } } } },
+        _count: { select: { assets: { where: { archivedAt: null } }, folders: true, nonPatrimonialItems: { where: { active: true } } } },
         profiles: {
           where: { active: true },
           select: { availableQty: true, components: { where: { removedAt: null }, select: { quantity: true } } },
@@ -75,7 +75,7 @@ export async function poolRoutes(app: FastifyInstance) {
     });
     if (!pool) fail(404, 'Setor não encontrado ou sem acesso.');
     const [assetCategoryGroups, nonPatrimonialCategoryGroups] = await Promise.all([
-      prisma.asset.groupBy({ by: ['categoryId'], where: { poolId: id }, _count: { _all: true } }),
+      prisma.asset.groupBy({ by: ['categoryId'], where: { poolId: id, archivedAt: null }, _count: { _all: true } }),
       prisma.nonPatrimonialItem.groupBy({ by: ['categoryId'], where: { poolId: id, active: true }, _count: { _all: true } }),
     ]);
     const categoryIds = new Set([...assetCategoryGroups, ...nonPatrimonialCategoryGroups].map(item => item.categoryId));

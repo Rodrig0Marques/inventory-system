@@ -7,6 +7,7 @@ import { fail, assertPool, poolScope, requireAsset, writablePool, descendants } 
 import { operation, serial } from '../../utils/transaction.js';
 import { attachComponents, componentsSchema } from './service.js';
 import { afterRemoval, stockTotals } from './domain.js';
+import { resolveTransferProfile } from './transfers.js';
 
 const profileSchema = z.object({
   poolId: z.string().min(1), categoryId: z.string().min(1), name: z.string().trim().min(1).max(200),
@@ -28,10 +29,10 @@ export async function stockRoutes(app: FastifyInstance) {
   const write = { preHandler: app.requirePermission(PermissionCode.STOCK_MANAGE) };
 
   app.get('/catalog', async request => {
-    const q = z.object({ poolId: z.string().optional() }).parse(request.query);
+    const q = z.object({ poolId: z.string().optional(), active: z.enum(['true', 'false', 'all']).default('true') }).parse(request.query);
     const scope = poolScope(request, q.poolId);
     const [profiles, categories] = await prisma.$transaction(async tx => Promise.all([
-      tx.itemProfile.findMany({ where: { ...scope, active: true }, include: {
+      tx.itemProfile.findMany({ where: { ...scope, ...(q.active === 'all' ? {} : { active: q.active === 'true' }) }, include: {
         pool: { select: { id: true, name: true } }, category: true,
         components: { where: { removedAt: null, asset: scope }, select: { quantity: true } },
       }, orderBy: { name: 'asc' } }),
@@ -55,6 +56,8 @@ export async function stockRoutes(app: FastifyInstance) {
     }).parse(request.body);
     const result = await operation(request, opId, 'CREATE_PROFILE', { data, initialAvailable }, async tx => { await writablePool(request, data.poolId, tx); }, async tx => {
       if (!await tx.category.findUnique({ where: { id: data.categoryId } })) fail(400, 'Categoria não encontrada.');
+      const duplicate = await tx.itemProfile.findUnique({ where: { poolId_name: { poolId: data.poolId, name: data.name } } });
+      if (duplicate) fail(409, duplicate.active ? 'Já existe um perfil com esse nome no Setor.' : 'Este nome pertence a um perfil arquivado. Consulte os arquivados e reative o perfil.');
       const profile = await tx.itemProfile.create({ data: { ...data, availableQty: initialAvailable } });
       if (initialAvailable) await tx.stockMovement.create({ data: {
         profileId: profile.id, userId: request.user.sub, operationId: opId, type: StockMovementType.RECEIPT,
@@ -107,6 +110,41 @@ export async function stockRoutes(app: FastifyInstance) {
         type: body.type, quantity: body.quantity, availableAfter: after.availableQty, notes: body.notes } });
       await audit(request, body.type, 'ItemProfile', id, before, after, tx);
       return { message: 'Saldo atualizado.', available: after.availableQty };
+    });
+  });
+
+  app.post('/profiles/:id/transfer', write, async request => {
+    const { id } = idSchema.parse(request.params);
+    const body = z.object({ requestId, toPoolId: z.string().min(1), quantity: z.number().int().min(1).max(1_000_000), notes: z.string().trim().min(3).max(2000) }).parse(request.body);
+    return operation(request, body.requestId, 'TRANSFER_AVAILABLE_COMPONENTS', { id, ...body }, async tx => {
+      const source = await accessibleProfile(request, id, tx);
+      await writablePool(request, source.poolId, tx);
+      await writablePool(request, body.toPoolId, tx);
+    }, async tx => {
+      const source = await accessibleProfile(request, id, tx);
+      if (!source.active) fail(409, 'Reative o perfil antes de transferir.');
+      if (source.poolId === body.toPoolId) fail(400, 'Selecione um Setor de destino diferente.');
+      if (source.availableQty < body.quantity) fail(409, 'Saldo disponível insuficiente. Unidades instaladas não podem ser transferidas por esta operação.');
+      const destination = await resolveTransferProfile(tx, source, body.toPoolId);
+      const from = await tx.itemProfile.update({ where: { id: source.id }, data: { availableQty: { decrement: body.quantity } } });
+      const to = await tx.itemProfile.update({ where: { id: destination.id }, data: { availableQty: { increment: body.quantity } } });
+      await tx.stockMovement.createMany({ data: [
+        { profileId: source.id, userId: request.user.sub, operationId: body.requestId, type: 'TRANSFER_OUT', quantity: body.quantity, availableAfter: from.availableQty, notes: body.notes },
+        { profileId: destination.id, userId: request.user.sub, operationId: body.requestId, type: 'TRANSFER_IN', quantity: body.quantity, availableAfter: to.availableQty, notes: body.notes },
+      ] });
+      await audit(request, 'TRANSFER_AVAILABLE', 'ItemProfile', source.id, { source, destination }, { fromPoolId: source.poolId, toPoolId: body.toPoolId, quantity: body.quantity, sourceAvailable: from.availableQty, destinationAvailable: to.availableQty, notes: body.notes }, tx);
+      return { message: 'Componentes disponíveis transferidos. O total global e as unidades instaladas foram preservados.', source: { id: from.id, available: from.availableQty }, destination: { id: to.id, available: to.availableQty } };
+    });
+  });
+
+  app.post('/profiles/:id/reactivate', write, async request => {
+    const { id } = idSchema.parse(request.params);
+    return serial(async tx => {
+      const previous = await accessibleProfile(request, id, tx);
+      await writablePool(request, previous.poolId, tx);
+      const updated = await tx.itemProfile.update({ where: { id }, data: { active: true } });
+      if (!previous.active) await audit(request, 'REACTIVATE', 'ItemProfile', id, previous, updated, tx);
+      return updated;
     });
   });
 

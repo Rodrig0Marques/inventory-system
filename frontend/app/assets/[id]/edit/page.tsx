@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../../../lib/api';
-import { categoryPath } from '../../../../lib/inventory';
+import { categoryPath, requestId } from '../../../../lib/inventory';
+import { AdvancedAssetFields, type AssetCategory, type CustomValue } from '../../../../components/AdvancedAssetFields';
 import { getSessionUser, hasPermission } from '../../../../lib/session';
 
 type AssetStatus =
@@ -21,9 +22,12 @@ type AssetStatus =
 
 type Pool = { id: string; name: string; active?: boolean };
 type Folder = { id: string; name: string; poolId: string; parentId?: string | null };
-type Category = { id: string; name: string; parentId?: string | null };
+type Category = AssetCategory;
 
 type Asset = {
+  archivedAt?: string | null;
+  assetTypeId?: string | null;
+  customValues?: Array<{ value: CustomValue; customField: { key: string } }>;
   id: string;
   patrimonyNumber: string;
   name: string;
@@ -97,6 +101,12 @@ export default function EditAssetPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [canMove, setCanMove] = useState(false);
+  const [canTransferComponents, setCanTransferComponents] = useState(false);
+  const [transferComponents, setTransferComponents] = useState(false);
+  const [originalPoolId, setOriginalPoolId] = useState('');
+  const [customValues, setCustomValues] = useState<Record<string, CustomValue>>({});
+  const [assetTypeId, setAssetTypeId] = useState('');
+  const pending = useRef<{ signature: string; id: string } | null>(null);
 
   useEffect(() => {
     const session = getSessionUser();
@@ -105,6 +115,7 @@ export default function EditAssetPage() {
       return;
     }
     setCanMove(hasPermission('ASSET_MOVE', session));
+    setCanTransferComponents(hasPermission('ASSET_MOVE', session) && hasPermission('STOCK_MANAGE', session));
 
     Promise.all([
       api<Asset>(`/assets/${id}`),
@@ -113,6 +124,9 @@ export default function EditAssetPage() {
       api<Category[]>('/categories'),
     ])
       .then(([asset, poolData, folderData, categoryData]) => {
+        if (asset.archivedAt) { router.replace(`/assets/${id}`); return; }
+        setOriginalPoolId(asset.poolId); setAssetTypeId(asset.assetTypeId || '');
+        setCustomValues(Object.fromEntries((asset.customValues || []).map(value => [value.customField.key, value.value])));
         setForm(toForm(asset));
         setPools(poolData);
         setFolders(folderData);
@@ -136,9 +150,13 @@ export default function EditAssetPage() {
     setSuccess('');
 
     try {
+      const signature = JSON.stringify({ form, customValues, assetTypeId, transferComponents });
+      if (pending.current?.signature !== signature) pending.current = { signature, id: requestId() };
       await api(`/assets/${id}`, {
         method: 'PUT',
         body: JSON.stringify({
+          customValues, assetTypeId: assetTypeId || null,
+          transferComponents: transferComponents && form.poolId !== originalPoolId, requestId: pending.current.id,
           patrimonyNumber: form.patrimonyNumber,
           name: form.name,
           description: form.description || null,
@@ -155,6 +173,7 @@ export default function EditAssetPage() {
       });
 
       setSuccess('Ativo atualizado com sucesso.');
+      setOriginalPoolId(form.poolId); setTransferComponents(false); pending.current = null;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao atualizar o ativo.');
     } finally {
@@ -205,7 +224,7 @@ export default function EditAssetPage() {
 
         <div className="form-field">
           <label>Categoria *</label>
-          <select required value={form.categoryId} onChange={e => setForm({ ...form, categoryId: e.target.value })}>
+          <select required value={form.categoryId} onChange={e => { setForm({ ...form, categoryId: e.target.value }); setCustomValues({}); setAssetTypeId(''); }}>
             <option value="">Selecione</option>
             {categories.map(category => <option key={category.id} value={category.id}>{categoryPath(categories, category.id)}</option>)}
           </select>
@@ -259,7 +278,7 @@ export default function EditAssetPage() {
           <textarea rows={4} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
         </div>
 
-        <div className="form-actions-row full-field">
+        {canTransferComponents && form.poolId !== originalPoolId && <label className="toggle-row full-field"><input type="checkbox" checked={transferComponents} onChange={event => setTransferComponents(event.target.checked)} /><span>Transferir os componentes instalados junto com o ativo. O saldo disponível não será alterado.</span></label>}<AdvancedAssetFields category={categories.find(category => category.id === form?.categoryId)} assetTypeId={assetTypeId} values={customValues} onTypeChange={setAssetTypeId} onValuesChange={setCustomValues} /><div className="form-actions-row full-field">
           <Link className="secondary-link" href={`/assets/${id}`}>Cancelar</Link>
           <button className="primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar alterações'}</button>
         </div>

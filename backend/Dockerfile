@@ -10,7 +10,7 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-FROM node:22-alpine
+FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
@@ -18,4 +18,4 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/package.json ./package.json
 EXPOSE 3333
-CMD ["sh", "-c", "npx prisma db push && npx tsx prisma/seed.ts && node dist/src/server.js"]
+CMD ["sh", "-c", "npx prisma db push && node dist/prisma/seed.js && node dist/src/server.js"]

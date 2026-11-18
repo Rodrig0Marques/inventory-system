@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { AvailableStockTransfer } from '../../components/AvailableStockTransfer';
 import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { getSessionUser, hasPermission } from '../../lib/session';
@@ -9,7 +10,7 @@ import { categoryPath, descendantIds, requestId, type CategoryNode } from '../..
 type Pool = { id: string; name: string; active: boolean };
 type Totals = { total: number; available: number; installed: number };
 type Category = CategoryNode & Totals & { profileCount: number; description?: string | null };
-type Profile = Totals & { id: string; name: string; poolId: string; categoryId: string; description?: string; specifications?: string; manufacturer?: string; model?: string; pool: Pool };
+type Profile = Totals & { active: boolean; id: string; name: string; poolId: string; categoryId: string; description?: string; specifications?: string; manufacturer?: string; model?: string; pool: Pool };
 type Catalog = { profiles: Profile[]; categories: Category[]; totals: Totals };
 type Asset = { id: string; name: string; patrimonyNumber: string; poolId: string };
 type Part = { profileId: string; quantity: number; origin: 'FROM_STOCK' | 'REGISTER_INSTALLED' };
@@ -17,7 +18,7 @@ type Movement = { id: string; type: string; quantity: number; availableAfter: nu
 const blankProfile = { name: '', categoryId: '', description: '', manufacturer: '', model: '', specifications: '', initialAvailable: 0 };
 const initial: Catalog = { profiles: [], categories: [], totals: { total: 0, available: 0, installed: 0 } };
 const number = (value: number) => value.toLocaleString('pt-BR');
-const labels: Record<string, string> = { RECEIPT: 'Entrada', WITHDRAWAL: 'Baixa do disponível', INSTALL_FROM_STOCK: 'Instalação com retirada', REGISTER_INSTALLED: 'Registro já instalado', RETURN_TO_STOCK: 'Devolução', RETIRE_INSTALLED: 'Baixa de instalado' };
+const labels: Record<string, string> = { RECEIPT: 'Entrada', WITHDRAWAL: 'Baixa do disponível', INSTALL_FROM_STOCK: 'Instalação com retirada', REGISTER_INSTALLED: 'Registro já instalado', RETURN_TO_STOCK: 'Devolução', RETIRE_INSTALLED: 'Baixa de instalado', TRANSFER_OUT: 'Transferência de componente - saída', TRANSFER_IN: 'Transferência de componente - entrada' };
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="form-field"><span>{label}</span>{children}</label>; }
 
 function Components({ value, onChange, profiles, count }: { value: Part[]; onChange: (p: Part[]) => void; profiles: Profile[]; count: number }) {
@@ -37,6 +38,7 @@ function Components({ value, onChange, profiles, count }: { value: Part[]; onCha
 export default function StockPage() {
   const [pools, setPools] = useState<Pool[]>([]), [poolId, setPoolId] = useState('');
   const [catalog, setCatalog] = useState<Catalog>(initial), [categoryId, setCategoryId] = useState('');
+  const [catalogActive, setCatalogActive] = useState('true');
   const [tab, setTab] = useState<'catalog' | 'assign' | 'movements'>('catalog');
   const [error, setError] = useState(''), [success, setSuccess] = useState(''), [busy, setBusy] = useState(false);
   const [canEdit, setCanEdit] = useState(false), [canAdmin, setCanAdmin] = useState(false), [loading, setLoading] = useState(true);
@@ -50,9 +52,9 @@ export default function StockPage() {
   const pending = useRef<{ signature: string; id: string } | null>(null);
 
   const refresh = useCallback(async () => {
-    const data = await api<Catalog>(`/stock/catalog${poolId ? `?poolId=${encodeURIComponent(poolId)}` : ''}`);
+    const data = await api<Catalog>(`/stock/catalog?active=${catalogActive}${poolId ? `&poolId=${encodeURIComponent(poolId)}` : ""}`);
     setCatalog(data);
-  }, [poolId]);
+  }, [poolId, catalogActive]);
   useEffect(() => {
     const session = getSessionUser();
     setCanEdit(hasPermission('STOCK_MANAGE', session));
@@ -140,7 +142,7 @@ export default function StockPage() {
     {!pools.length && !loading && <div className="notice notice-info">Nenhum Setor disponível. Solicite ao administrador a liberação dos seus Setores em Usuários.</div>}
     <div className="stock-kpis">{[['Total de componentes', catalog.totals.total], ['Disponíveis em estoque', catalog.totals.available], ['Instalados em ativos', catalog.totals.installed]].map(([label, value]) => <div className="card stock-kpi" key={label}><span>{label}</span><strong>{number(Number(value))}</strong></div>)}</div>
     <p className="field-help">Total = disponíveis + instalados. Computadores e outros ativos principais aparecem separadamente; um perfil técnico não entra na contagem.</p>
-    <div className="stock-tabs" role="tablist">{(['catalog','assign','movements'] as const).filter(t => canEdit || t !== 'assign').map(t => <button role="tab" aria-selected={tab === t} type="button" className={tab === t ? 'primary' : 'secondary'} key={t} onClick={() => { setTab(t); setError(''); }}>{({ catalog: 'Catálogo', assign: 'Associar a ativos', movements: 'Movimentações' })[t]}</button>)}</div>
+    <label className="form-field"><span>Perfis exibidos</span><select value={catalogActive} onChange={event => setCatalogActive(event.target.value)}><option value="true">Ativos</option><option value="false">Arquivados</option><option value="all">Todos</option></select></label><div className="stock-tabs" role="tablist">{(['catalog','assign','movements'] as const).filter(t => canEdit || t !== 'assign').map(t => <button role="tab" aria-selected={tab === t} type="button" className={tab === t ? 'primary' : 'secondary'} key={t} onClick={() => { setTab(t); setError(''); }}>{({ catalog: 'Catálogo', assign: 'Associar a ativos', movements: 'Movimentações' })[t]}</button>)}</div>
 
     {tab === 'catalog' && <>
       <section className="card section-card"><div className="section-heading"><div><h2>Categorias e especificações</h2><p>Clique para navegar pelos níveis e conferir os totais acumulados.</p></div><Link className="table-action" href="/structure">Gerenciar estrutura</Link></div>
@@ -148,7 +150,7 @@ export default function StockPage() {
         <div className="stock-category-grid">{children.map(c => <button type="button" className="stock-category" key={c.id} onClick={() => setCategoryId(c.id)}><strong>{c.name}</strong><span>Componentes: <b>{number(c.total)}</b></span><span>Disponíveis: <b>{number(c.available)}</b> | Instalados: <b>{number(c.installed)}</b></span><small>Perfis de componentes: {c.profileCount}</small></button>)}</div>
         {currentCategory && <div className="notice notice-info">{currentCategory.name}: {number(currentCategory.total)} componentes no total, {number(currentCategory.available)} disponíveis e {number(currentCategory.installed)} instalados, incluindo subcategorias.</div>}
       </section>
-      <section className="card section-card"><div className="section-heading"><div><h2>Perfis de itens</h2><p>Crie, por exemplo, um perfil de memória com capacidade e especificação técnica.</p></div>{canEdit && <button type="button" disabled={!poolId} onClick={() => { setEditing(''); setProfile({ ...blankProfile, categoryId }); setShowProfile(!showProfile); }}>+ Novo perfil</button>}</div>
+      <section className="card section-card"><div className="section-heading"><div><h2>Perfis de itens</h2><p>Crie, por exemplo, um perfil de memória com capacidade e especificação técnica.</p></div>{canEdit && <button type="button" className="primary" disabled={!poolId} onClick={() => { setEditing(''); setProfile({ ...blankProfile, categoryId }); setShowProfile(!showProfile); }}>+ Novo perfil</button>}</div>
         {canEdit && !poolId && <p className="field-help">Selecione um Setor no topo para criar perfis ou movimentar unidades.</p>}
         {canEdit && showProfile && <form onSubmit={saveProfile} className="stock-profile-form">
           <div className="stock-form-grid"><Field label="Nome do perfil *"><input required maxLength={200} value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} /></Field>
@@ -157,10 +159,10 @@ export default function StockPage() {
           <Field label="Especificações técnicas"><textarea rows={2} value={profile.specifications} onChange={e => setProfile({ ...profile, specifications: e.target.value })} /></Field>
           {!editing && <Field label="Saldo inicial disponível"><input type="number" required min={0} max={1000000} value={profile.initialAvailable} onChange={e => setProfile({ ...profile, initialAvailable: Number(e.target.value) })} /></Field>}</div>
           {editing && <p className="field-help">Alterar o perfil atualiza a descrição dos componentes que o utilizam. O saldo não é alterado aqui.</p>}
-          <div className="form-actions-row"><button type="button" className="secondary" onClick={() => setShowProfile(false)}>Cancelar</button><button disabled={busy || !poolId}>{busy ? 'Salvando...' : 'Salvar perfil'}</button></div>
+          <div className="form-actions-row"><button type="button" className="secondary" onClick={() => setShowProfile(false)}>Cancelar</button><button className="primary" disabled={busy || !poolId}>{busy ? 'Salvando...' : 'Salvar perfil'}</button></div>
         </form>}
         <div className="table-wrap"><table><thead><tr><th>Perfil / especificações</th><th>Setor</th><th>Categoria</th><th>Disponível</th><th>Instalado</th><th>Total</th>{canEdit && <th>Ações</th>}</tr></thead><tbody>
-          {visibleProfiles.map(p => <tr key={p.id}><td><strong>{p.name}</strong><div className="entity-subtitle stock-specs">{p.specifications || [p.manufacturer, p.model].filter(Boolean).join(' - ')}</div></td><td>{p.pool.name}</td><td>{categoryPath(catalog.categories, p.categoryId)}</td><td>{number(p.available)}</td><td>{number(p.installed)}</td><td><b>{number(p.total)}</b></td>{canEdit && <td><div className="row-actions"><button type="button" className="table-action" onClick={() => editProfile(p)}>Editar</button><button type="button" className="table-action" onClick={() => { setAdjustment({ profile: p, type: 'RECEIPT' }); setQuantity(1); setNotes(''); }}>Entrada / baixa</button><button type="button" className="icon-danger" disabled={busy || p.total > 0} onClick={() => { if (window.confirm('Arquivar este perfil sem saldo? O histórico permanece.')) run(async () => { await api(`/stock/profiles/${p.id}`, { method: 'DELETE' }); setSuccess('Perfil arquivado.'); }); }}>Arquivar</button></div></td>}</tr>)}
+          {visibleProfiles.map(p => <tr key={p.id}><td><strong>{p.name}</strong><div className="entity-subtitle stock-specs">{p.specifications || [p.manufacturer, p.model].filter(Boolean).join(' - ')}</div></td><td>{p.pool.name}</td><td>{categoryPath(catalog.categories, p.categoryId)}</td><td>{number(p.available)}</td><td>{number(p.installed)}</td><td><b>{number(p.total)}</b></td>{canEdit && <td><div className="row-actions">{p.active ? <><AvailableStockTransfer profile={p} pools={pools} onSuccess={message => { setSuccess(message); setError(''); void refresh().catch(() => setError('Transferência concluída. Atualize a página para recarregar os saldos.')); }} /><button type="button" className="table-action" onClick={() => editProfile(p)}>Editar</button><button type="button" className="table-action" onClick={() => { setAdjustment({ profile: p, type: 'RECEIPT' }); setQuantity(1); setNotes(''); }}>Entrada / baixa</button><button type="button" className="icon-danger" disabled={busy || p.total > 0} onClick={() => { if (window.confirm('Arquivar este perfil sem saldo? O histórico permanece.')) run(async () => { await api(`/stock/profiles/${p.id}`, { method: 'DELETE' }); setSuccess('Perfil arquivado.'); }); }}>Arquivar</button></> : <button type="button" className="table-action" disabled={busy} onClick={() => run(async () => { await api(`/stock/profiles/${p.id}/reactivate`, { method: "POST" }); setSuccess("Perfil reativado."); })}>Reativar perfil</button>}</div></td>}</tr>)}
           {!visibleProfiles.length && <tr><td colSpan={canEdit ? 7 : 6}><div className="empty-state">{loading ? 'Carregando...' : 'Nenhum perfil neste recorte. Cadastre a estrutura e crie o primeiro perfil.'}</div></td></tr>}
         </tbody></table></div>
       </section>
@@ -172,7 +174,7 @@ export default function StockPage() {
         <div className="asset-picker">{assets.map(a => <label key={a.id}><input type="checkbox" checked={!!selected[a.id]} onChange={e => setSelected(prev => { const next = { ...prev }; if (e.target.checked) next[a.id] = a; else delete next[a.id]; return next; })} /><span><b>{a.patrimonyNumber}</b> {a.name}</span><Link className="table-action" href={`/assets/${a.id}`}>Detalhes</Link></label>)}</div>
         <div className="stock-pagination"><button type="button" className="secondary" disabled={assetPage === 1} onClick={() => setAssetPage(assetPage - 1)}>Anterior</button><span>Página {assetPage} | {assetTotal} ativos | {Object.keys(selected).length} selecionados</span><button type="button" className="secondary" disabled={assetPage * 25 >= assetTotal} onClick={() => setAssetPage(assetPage + 1)}>Próxima</button></div>
         <Components value={parts} onChange={setParts} profiles={catalog.profiles} count={Object.keys(selected).length} />
-        <div className="form-actions-row"><button type="button" className="secondary" onClick={() => setSelected({})}>Limpar seleção</button><button disabled={busy || !Object.keys(selected).length || Object.keys(selected).length > 200 || !parts.length}>{busy ? 'Associando...' : `Associar a ${Object.keys(selected).length} ativo(s)`}</button></div>
+        <div className="form-actions-row"><button type="button" className="secondary" onClick={() => setSelected({})}>Limpar seleção</button><button className="primary" disabled={busy || !Object.keys(selected).length || Object.keys(selected).length > 200 || !parts.length}>{busy ? 'Associando...' : `Associar a ${Object.keys(selected).length} ativo(s)`}</button></div>
       </form>}
     </section>}
 
@@ -185,14 +187,14 @@ export default function StockPage() {
         <Field label="Categoria pai"><select value={categoryEditor.parentId} onChange={e => setCategoryEditor({ ...categoryEditor, parentId: e.target.value })}><option value="">Raiz das categorias</option>{catalog.categories.filter(c => !descendantIds(catalog.categories, categoryEditor.id).has(c.id)).map(c => <option key={c.id} value={c.id}>{categoryPath(catalog.categories, c.id)}</option>)}</select></Field>
         <Field label="Descrição"><textarea rows={3} maxLength={4000} value={categoryEditor.description} onChange={e => setCategoryEditor({ ...categoryEditor, description: e.target.value })} /></Field>
         <p className="field-help">Renomear ou mover a categoria altera o caminho exibido nos perfis e ativos vinculados, sem alterar os saldos.</p>
-        <div className="form-actions-row"><button type="button" className="secondary" onClick={() => setCategoryEditor(null)}>Cancelar</button><button disabled={busy}>{busy ? 'Salvando...' : 'Salvar categoria'}</button></div>
+        <div className="form-actions-row"><button type="button" className="secondary" onClick={() => setCategoryEditor(null)}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Salvando...' : 'Salvar categoria'}</button></div>
       </form>
     </div></div>}
 
     {adjustment && <div className="modal-backdrop"><div className="modal-card"><div className="modal-heading"><div><h2>Saldo disponível</h2><p>{adjustment.profile.name} | {adjustment.profile.pool.name}</p></div><button type="button" className="modal-close" onClick={() => setAdjustment(null)}>×</button></div>
       <form className="stack-form" onSubmit={e => { e.preventDefault(); run(async () => { await post(`/stock/profiles/${adjustment.profile.id}/stock`, { type: adjustment.type, quantity, notes }); setAdjustment(null); setSuccess('Movimentação registrada.'); }); }}>
         <Field label="Operação"><select value={adjustment.type} onChange={e => setAdjustment({ ...adjustment, type: e.target.value as 'RECEIPT' | 'WITHDRAWAL' })}><option value="RECEIPT">Entrada de novas unidades</option><option value="WITHDRAWAL">Baixa do inventário (não instalar)</option></select></Field>
-        <Field label="Quantidade"><input type="number" min={1} max={1000000} required value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></Field><Field label="Motivo *"><textarea minLength={3} maxLength={2000} required value={notes} onChange={e => setNotes(e.target.value)} /></Field><p className="field-help">Para instalar em um computador, use Associar a ativos; não use baixa do inventário.</p><button disabled={busy}>{busy ? 'Salvando...' : 'Registrar movimentação'}</button>
+        <Field label="Quantidade"><input type="number" min={1} max={1000000} required value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></Field><Field label="Motivo *"><textarea minLength={3} maxLength={2000} required value={notes} onChange={e => setNotes(e.target.value)} /></Field><p className="field-help">Para instalar em um computador, use Associar a ativos; não use baixa do inventário.</p><button className="primary" disabled={busy}>{busy ? 'Salvando...' : 'Registrar movimentação'}</button>
       </form></div></div>}
   </>;
 }

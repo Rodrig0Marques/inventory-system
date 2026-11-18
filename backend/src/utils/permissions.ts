@@ -28,12 +28,13 @@ export function defaultPermissionsForRole(role: UserRole): PermissionCode[] {
 export function effectivePermissions(
   role: UserRole,
   stored: readonly PermissionCode[],
-  legacy?: { canGlobalAssetLookup?: boolean; canGlobalDashboardStats?: boolean },
+  legacy?: { permissionsInitialized?: boolean; canGlobalAssetLookup?: boolean; canGlobalDashboardStats?: boolean },
 ): PermissionCode[] {
   if (role === UserRole.ADMIN) return [...ALL_PERMISSIONS];
   const result = new Set<PermissionCode>(stored);
-  if (legacy?.canGlobalAssetLookup) result.add(PermissionCode.GLOBAL_ASSET_LOOKUP);
-  if (legacy?.canGlobalDashboardStats) result.add(PermissionCode.GLOBAL_DASHBOARD_STATS);
+  // Legacy flags are only read until the one-time backfill marks this account.
+  if (!legacy?.permissionsInitialized && legacy?.canGlobalAssetLookup) result.add(PermissionCode.GLOBAL_ASSET_LOOKUP);
+  if (!legacy?.permissionsInitialized && legacy?.canGlobalDashboardStats) result.add(PermissionCode.GLOBAL_DASHBOARD_STATS);
   return [...result];
 }
 

@@ -1,29 +1,8 @@
 import { PermissionCode, PrismaClient, UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { defaultPermissionsForRole } from '../src/utils/permissions.js';
 
 const prisma = new PrismaClient();
-
-function defaultPermissionsForRole(role: UserRole): PermissionCode[] {
-  if (role === UserRole.ADMIN) return [];
-  if (role === UserRole.MANAGER) {
-    return [
-      PermissionCode.ASSET_CREATE,
-      PermissionCode.ASSET_EDIT,
-      PermissionCode.ASSET_DELETE,
-      PermissionCode.ASSET_MOVE,
-      PermissionCode.IMPORT_ASSETS,
-      PermissionCode.FOLDER_CREATE,
-      PermissionCode.FOLDER_DELETE,
-      PermissionCode.STOCK_MANAGE,
-      PermissionCode.NON_PATRIMONIAL_CREATE,
-      PermissionCode.NON_PATRIMONIAL_EDIT,
-      PermissionCode.NON_PATRIMONIAL_MOVE,
-      PermissionCode.NON_PATRIMONIAL_ARCHIVE,
-      PermissionCode.IMPORT_NON_PATRIMONIAL,
-    ];
-  }
-  return [];
-}
 
 async function initializePermissions() {
   const users = await prisma.user.findMany({
@@ -37,7 +16,7 @@ async function initializePermissions() {
   });
 
   for (const user of users) {
-    const permissions = new Set(defaultPermissionsForRole(user.role));
+    const permissions = new Set(user.role === UserRole.ADMIN ? [] : defaultPermissionsForRole(user.role));
     if (user.canGlobalAssetLookup) permissions.add(PermissionCode.GLOBAL_ASSET_LOOKUP);
     if (user.canGlobalDashboardStats) permissions.add(PermissionCode.GLOBAL_DASHBOARD_STATS);
 

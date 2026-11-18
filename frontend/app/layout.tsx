@@ -1,7 +1,9 @@
 import './globals.css';
+import './refinements.css';
+import './workspace.css';
 import { Shell } from '../components/Shell';
 
-export const metadata = { title: 'Inventário', description: 'Sistema interno de gestão patrimonial' };
+export const metadata = { title: { default: 'Inventário · Cia do Crédito', template: '%s · Inventário' }, description: 'Seu espaço de gestão de ativos, estoque e patrimônio da Cia do Crédito.' };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

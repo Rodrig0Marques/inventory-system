@@ -3,6 +3,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import bcrypt from 'bcryptjs';
 import * as XLSX from 'xlsx';
 import { UserRole } from '@prisma/client';
@@ -21,7 +22,10 @@ let admin: any, manager: any, rhManager: any, viewer: any, isolated: any;
 let pc1: any, pc2: any, rhAsset: any, profile: any, other: any;
 let externalComponent = '', stockComponent = '';
 const auth = (user: any) => ({ authorization: `Bearer ${user.token}` });
-const req = (method: 'GET'|'POST'|'PUT'|'DELETE', path: string, user: any, payload?: object) => app.inject({ method, url: path, headers: auth(user), ...(payload ? { payload } : {}) });
+const req = (method: 'GET'|'POST'|'PUT'|'DELETE', path: string, user: any, payload?: object) => {
+  const needsId = method === 'POST' && /^\/non-patrimonial(?:\/[^/]+\/(?:stock|transfer))?$/.test(path);
+  return app.inject({ method, url: path, headers: auth(user), ...(payload ? { payload: needsId ? { requestId: randomUUID(), ...payload } : payload } : {}) });
+};
 const body = (response: Awaited<ReturnType<typeof req>>) => response.json() as any;
 async function expect(method: 'GET'|'POST'|'PUT'|'DELETE', path: string, user: any, payload: object | undefined, code: number) {
   const response = await req(method,path,user,payload); assert.equal(response.statusCode,code,response.body); return body(response);
@@ -171,7 +175,9 @@ test('import preview rejects another pool without revealing records from that po
 });
 test('template contains only authorized pool names', async () => {
   const r = await req('GET','/imports/template',viewer); assert.equal(r.statusCode,200);
-  const book = XLSX.read(r.rawPayload,{ type:'buffer' }); const pools = JSON.stringify(XLSX.utils.sheet_to_json(book.Sheets.POOLS,{ header:1 }));
+  const book = XLSX.read(r.rawPayload,{ type:'buffer' });
+  assert.ok(book.Sheets.SETORES, 'The import template must include its sectors worksheet');
+  const pools = JSON.stringify(XLSX.utils.sheet_to_json(book.Sheets.SETORES,{ header:1 }));
   assert.ok(pools.includes(rh.name)); assert.ok(!pools.includes(ti.name));
 });
 test('non-admin users do not see import history of other users or legacy unscoped jobs', async () => {
@@ -187,4 +193,322 @@ test('revoking membership takes effect on the next request with the existing JWT
 test('password reset revokes previously signed tokens', async () => {
   await expect('PUT',`/users/${isolated.id}/password`,admin,{ password:'AnotherTestPassword!984' },200);
   await expect('GET','/auth/me',isolated,undefined,401);
+});
+
+// Workflow regressions: all records below live in the disposable integration DB.
+async function upload(user: any, path: string, csv: string, previewId?: string) {
+  const boundary = `workflow-${tag}`;
+  return app.inject({ method: 'POST', url: path, headers: { ...auth(user), 'content-type': `multipart/form-data; boundary=${boundary}`, ...(previewId ? { 'x-request-id': previewId } : {}) }, payload: `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="workflow.csv"\r\nContent-Type: text/csv\r\n\r\n${csv}\r\n--${boundary}--\r\n` });
+}
+async function analyzed(user: any, path: string, mode: string, csv: string) {
+  const result = await upload(user, `${path}/preview?mode=${mode}`, csv); assert.equal(result.statusCode, 200, result.body); return result.json() as any;
+}
+
+test('global lookup pages repeated patrimonies without false notFound results', async () => {
+  const code = `COMMON-${tag}`, last = `ZZ-LAST-${tag}`;
+  const pools = await Promise.all(Array.from({ length: 51 }, (_, i) => prisma.pool.create({ data: { name: `LOOKUP-${tag}-${i}` } })));
+  await prisma.asset.createMany({ data: pools.map(pool => ({ poolId: pool.id, categoryId: computer.id, name: 'Repeated code', patrimonyNumber: code })) });
+  await prisma.asset.create({ data: { poolId: pools[0].id, categoryId: computer.id, name: 'Last code', patrimonyNumber: last } });
+  const result = await expect('GET', `/assets/global-lookup?patrimony=${code},${last}`, admin, undefined, 200);
+  assert.equal(result.total, 52); assert.equal(result.items.length, 50); assert.deepEqual(result.notFound, []); assert.deepEqual(result.ambiguous, [code]); assert.equal(result.hasMore, true);
+  const next = await expect('GET', `/assets/global-lookup?patrimony=${code},${last}&page=2`, admin, undefined, 200); assert.equal(next.items.length, 2);
+  const filtered = await expect('GET', `/assets/global-lookup?patrimony=${code}&poolId=${pools[0].id}`, admin, undefined, 200); assert.equal(filtered.total, 1); assert.deepEqual(filtered.ambiguous, []);
+  await expect('GET', `/assets/global-lookup?patrimony=${code}`, manager, undefined, 403);
+});
+
+test('profile archive can be listed and reactivated without recycling its identity', async () => {
+  const p = await makeProfile('archive-flow', 0);
+  await expect('DELETE', `/stock/profiles/${p.id}`, manager, undefined, 200);
+  assert.equal(await catalogProfile(p.id), undefined);
+  const archived = await expect('GET', '/stock/catalog?active=false', manager, undefined, 200); assert.ok(archived.profiles.some((item: any) => item.id === p.id));
+  await expect('POST', '/stock/profiles', manager, { requestId: randomUUID(), poolId: ti.id, categoryId: c2666.id, name: p.name }, 409);
+  await expect('POST', `/stock/profiles/${p.id}/reactivate`, manager, undefined, 200); assert.equal((await catalogProfile(p.id)).active, true);
+});
+
+test('whole equipment transfer preserves installed/global totals and retries once', async () => {
+  const operator = await makeUser('transfer-operator', UserRole.MANAGER, [ti.id, rh.id]);
+  const p = await makeProfile('transfer-component', 4);
+  const asset = await expect('POST', '/assets', operator, { poolId: ti.id, categoryId: computer.id, name: 'Complete equipment', patrimonyNumber: `MOVE-${tag}` }, 201);
+  await expect('POST', '/stock/assign', operator, { requestId: randomUUID(), poolId: ti.id, assetIds: [asset.id], components: [{ profileId: p.id, quantity: 2, origin: 'FROM_STOCK' }] }, 200);
+  const before = (await expect('GET', '/stock/catalog', admin, undefined, 200)).totals;
+  const payload = { poolId: rh.id, requestId: randomUUID(), transferComponents: true };
+  await expect('POST', `/assets/${asset.id}/move`, manager, payload, 404);
+  const moved = await expect('POST', `/assets/${asset.id}/move`, operator, payload, 200); assert.equal(moved.poolId, rh.id);
+  await expect('POST', `/assets/${asset.id}/move`, operator, payload, 200);
+  const after = (await expect('GET', '/stock/catalog', admin, undefined, 200)).totals; assert.deepEqual(after, before);
+  const components = await expect('GET', `/stock/assets/${asset.id}/components`, operator, undefined, 200); assert.equal(components.length, 1); assert.equal(components[0].quantity, 2); assert.equal(components[0].profile.poolId, rh.id);
+  assert.equal(await prisma.stockMovement.count({ where: { assetId: asset.id, type: 'TRANSFER_OUT' } }), 1);
+  assert.equal(await prisma.stockMovement.count({ where: { assetId: asset.id, type: 'TRANSFER_IN' } }), 1);
+  assert.equal((await prisma.itemProfile.findUniqueOrThrow({ where: { id: p.id } })).availableQty, 2);
+});
+
+test('incompatible destination component profiles roll back the whole equipment transfer', async () => {
+  const operator = await makeUser('transfer-conflict', UserRole.MANAGER, [ti.id, rh.id]);
+  const p = await makeProfile('conflicting-spec', 2);
+  await expect('POST', '/stock/profiles', operator, { requestId: randomUUID(), poolId: rh.id, categoryId: c3200.id, name: p.name, specifications: 'Different specification' }, 201);
+  const asset = await expect('POST', '/assets', operator, { poolId: ti.id, categoryId: computer.id, name: 'Blocked transfer', patrimonyNumber: `BLOCK-${tag}` }, 201);
+  await expect('POST', '/stock/assign', operator, { requestId: randomUUID(), poolId: ti.id, assetIds: [asset.id], components: [{ profileId: p.id, quantity: 1, origin: 'FROM_STOCK' }] }, 200);
+  await expect('POST', `/assets/${asset.id}/move`, operator, { requestId: randomUUID(), poolId: rh.id, transferComponents: true }, 409);
+  assert.equal((await prisma.asset.findUniqueOrThrow({ where: { id: asset.id } })).poolId, ti.id);
+  assert.equal(await prisma.assetComponent.count({ where: { assetId: asset.id, removedAt: null, profileId: p.id } }), 1);
+  assert.equal(await prisma.stockMovement.count({ where: { assetId: asset.id, type: 'TRANSFER_OUT' } }), 0);
+});
+
+test('asset archive preserves history, is reversible and is excluded from summary/list', async () => {
+  const a = await expect('POST', '/assets', manager, { poolId: ti.id, categoryId: computer.id, name: 'Preserved asset', patrimonyNumber: `ARCHIVE-${tag}` }, 201);
+  await expect('PUT', `/assets/${a.id}`, manager, { location: 'Archive room' }, 200);
+  const totalBefore = (await expect('GET', '/assets/summary', manager, undefined, 200)).total;
+  await expect('DELETE', `/assets/${a.id}`, manager, undefined, 200);
+  const stored = await prisma.asset.findUniqueOrThrow({ where: { id: a.id } }); assert.ok(stored.archivedAt);
+  assert.equal((await expect('GET', '/assets/summary', manager, undefined, 200)).total, totalBefore - 1);
+  assert.equal((await expect('GET', `/assets?search=${a.patrimonyNumber}`, manager, undefined, 200)).total, 0);
+  assert.equal((await expect('GET', `/assets?search=${a.patrimonyNumber}&archived=true`, manager, undefined, 200)).total, 1);
+  const detail = await expect('GET', `/assets/${a.id}`, manager, undefined, 200); assert.equal(detail.movements.length, 1);
+  await expect('PUT', `/assets/${a.id}`, manager, { name: 'Must not edit archived' }, 409);
+  await expect('POST', `/assets/${a.id}/reactivate`, manager, undefined, 200);
+  assert.equal((await prisma.asset.findUniqueOrThrow({ where: { id: a.id } })).archivedAt, null);
+});
+
+test('asset/category filters consistently include descendants and allow exact filtering', async () => {
+  const a = await expect('POST', '/assets', manager, { poolId: ti.id, categoryId: c2666.id, name: 'Nested category asset', patrimonyNumber: `NESTED-${tag}` }, 201);
+  assert.ok((await expect('GET', `/assets?categoryId=${root.id}&pageSize=100`, manager, undefined, 200)).items.some((item: any) => item.id === a.id));
+  assert.equal((await expect('GET', `/assets?categoryId=${root.id}&includeDescendants=false`, manager, undefined, 200)).items.length, 0);
+  const category = (await expect('GET', '/categories', manager, undefined, 200)).find((item: any) => item.id === root.id); assert.ok(category.assetTotal > 0); assert.equal(category._count.assets, 0);
+});
+
+test('custom field requirements, types, options and unknown keys are enforced on create and edits', async () => {
+  const c = await prisma.category.create({ data: { name: `Custom-${tag}` } });
+  await expect('POST', `/categories/${c.id}/fields`, admin, { key: 'capacity', name: 'Capacity', type: 'NUMBER', required: true }, 201);
+  await expect('POST', `/categories/${c.id}/fields`, admin, { key: 'grade', name: 'Grade', type: 'SELECT', options: [] }, 400);
+  await expect('POST', `/categories/${c.id}/fields`, admin, { key: 'grade', name: 'Grade', type: 'SELECT', options: ['A', 'B'] }, 201);
+  const base = { poolId: ti.id, categoryId: c.id, name: 'Custom equipment', patrimonyNumber: `CUSTOM-${tag}` };
+  await expect('POST', '/assets', manager, base, 400);
+  await expect('POST', '/assets', manager, { ...base, customValues: { capacity: '8' } }, 400);
+  await expect('POST', '/assets', manager, { ...base, customValues: { capacity: 8, grade: 'C' } }, 400);
+  const a = await expect('POST', '/assets', manager, { ...base, customValues: { capacity: 8, grade: 'A' } }, 201);
+  await expect('PUT', `/assets/${a.id}`, manager, { name: 'Keeps retained fields' }, 200);
+  await expect('PUT', `/assets/${a.id}`, manager, { customValues: { capacity: null } }, 400);
+  await expect('PUT', `/assets/${a.id}`, manager, { customValues: { unknown: 3 } }, 400);
+  const csv = `patrimonio,nome,setor,categoria\n${base.patrimonyNumber},Updated through import,${ti.name},${c.name}\n`;
+  const retainedPreview = await analyzed(manager, '/imports/assets', 'UPDATE', csv);
+  assert.equal(retainedPreview.validRows, 1);
+  assert.equal((await upload(manager, '/imports/assets', csv, retainedPreview.previewId)).statusCode, 201);
+  const requiredPreview = await analyzed(manager, '/imports/assets', 'CREATE', csv.replace(base.patrimonyNumber, `CUSTOM-NEW-${tag}`));
+  assert.equal(requiredPreview.validRows, 0);
+  assert.ok(requiredPreview.rows[0].errors.some((error: string) => error.includes('Capacity')));
+});
+
+test('persisted import preview prevents duplicate creations and file substitution', async () => {
+  const csv = `patrimonio,nome,setor,categoria\nIMP-${tag},Imported equipment,${ti.name},${computer.name}\n`;
+  const preview = await analyzed(manager, '/imports/assets', 'CREATE', csv); assert.equal(preview.validRows, 1);
+  const invalid = await upload(manager, '/imports/assets', csv + '\nchanged', preview.previewId); assert.equal(invalid.statusCode, 409);
+  const first = await upload(manager, '/imports/assets', csv, preview.previewId); assert.equal(first.statusCode, 201, first.body);
+  const retry = await upload(manager, '/imports/assets', csv, preview.previewId); assert.equal(retry.statusCode, 201, retry.body); assert.equal(first.json().id, retry.json().id);
+  assert.equal(await prisma.asset.count({ where: { poolId: ti.id, patrimonyNumber: `IMP-${tag}` } }), 1);
+  assert.equal((await upload(manager, '/imports/assets/preview?mode=CREATE', csv)).statusCode, 409);
+  assert.equal((await upload(rhManager, '/imports/assets', csv, preview.previewId)).statusCode, 404);
+});
+
+test('non-patrimonial import separates metadata updates and final balance with optimistic checks', async () => {
+  const item = await expect('POST', '/non-patrimonial', manager, { poolId: ti.id, categoryId: c2666.id, name: 'Consumable', quantity: 20 }, 201);
+  const csv = `codigo_interno,nome,setor,categoria,quantidade\n${item.internalCode},Updated consumable,${ti.name},${c2666.name},5\n`;
+  const update = await analyzed(manager, '/imports/non-patrimonial', 'UPDATE', csv); assert.equal(update.rows[0].quantityBefore, 20); assert.equal(update.rows[0].quantityAfter, 20);
+  const updated = await upload(manager, '/imports/non-patrimonial', csv, update.previewId); assert.equal(updated.statusCode, 201, updated.body);
+  assert.equal((await prisma.nonPatrimonialItem.findUniqueOrThrow({ where: { id: item.id } })).quantity, 20);
+  const stale = await analyzed(manager, '/imports/non-patrimonial', 'SET_BALANCE', csv);
+  await expect('POST', `/non-patrimonial/${item.id}/stock`, manager, { type: 'ENTRY', quantity: 2, notes: 'Concurrent receipt' }, 200);
+  const rejected = await upload(manager, '/imports/non-patrimonial', csv, stale.previewId); assert.equal(rejected.statusCode, 207); assert.equal(rejected.json().successRows, 0);
+  const balance = await analyzed(manager, '/imports/non-patrimonial', 'SET_BALANCE', csv); assert.equal(balance.rows[0].quantityBefore, 22); assert.equal(balance.rows[0].quantityAfter, 5);
+  const result = await upload(manager, '/imports/non-patrimonial', csv, balance.previewId); assert.equal(result.statusCode, 201, result.body);
+  assert.equal((await prisma.nonPatrimonialItem.findUniqueOrThrow({ where: { id: item.id } })).quantity, 5);
+});
+
+test('concurrent confirmations from two previews of the same new-material file do not duplicate stock', async () => {
+  const csv = `nome,setor,categoria,quantidade\nNew material ${tag},${ti.name},${c2666.name},4\n`;
+  const a = await analyzed(manager, '/imports/non-patrimonial', 'CREATE', csv), b = await analyzed(manager, '/imports/non-patrimonial', 'CREATE', csv);
+  const responses = await Promise.all([upload(manager, '/imports/non-patrimonial', csv, a.previewId), upload(manager, '/imports/non-patrimonial', csv, b.previewId)]);
+  for (const response of responses) assert.equal(response.statusCode, 201, response.body);
+  assert.equal(responses[0].json().id, responses[1].json().id);
+  assert.equal(await prisma.nonPatrimonialItem.count({ where: { name: `New material ${tag}`, poolId: ti.id } }), 1);
+});
+
+test('non-patrimonial history pages all records rather than silently cutting at 200', async () => {
+  const item = await expect('POST', '/non-patrimonial', manager, { poolId: ti.id, categoryId: c2666.id, name: 'Long history', quantity: 0 }, 201);
+  await prisma.nonPatrimonialMovement.createMany({ data: Array.from({ length: 205 }, (_, i) => ({ itemId: item.id, userId: manager.id, type: 'ADJUSTMENT' as const, quantity: 1, quantityBefore: i, quantityAfter: i + 1 })) });
+  const result = await expect('GET', `/non-patrimonial/${item.id}/movements?page=5&pageSize=50`, manager, undefined, 200); assert.equal(result.total, 205); assert.equal(result.items.length, 5);
+  await expect('GET', `/non-patrimonial/${item.id}/movements`, rhManager, undefined, 404);
+});
+
+test('audit search is administrative and preserves archived asset events', async () => {
+  const readonly = await makeUser('audit-viewer', UserRole.VIEWER, [ti.id]);
+  await expect('GET', '/audit', readonly, undefined, 403);
+  await expect('GET', '/audit', manager, undefined, 403);
+  const result = await expect('GET', '/audit?entity=Asset&action=ARCHIVE', admin, undefined, 200); assert.ok(result.total > 0); assert.ok(result.items.every((item: any) => item.action === 'ARCHIVE'));
+});
+
+test('initialized accounts cannot regain revoked permissions through old global flags', async () => {
+  const user = await makeUser('legacy-flags', UserRole.VIEWER, [ti.id]);
+  await prisma.user.update({ where: { id: user.id }, data: { canGlobalAssetLookup: true, permissionsInitialized: true } });
+  await expect('GET', `/assets/global-lookup?patrimony=PC1-${tag}`, user, undefined, 403);
+  await prisma.user.update({ where: { id: user.id }, data: { permissionsInitialized: false } });
+  await expect('GET', `/assets/global-lookup?patrimony=PC1-${tag}`, user, undefined, 200);
+});
+
+test('additive SQL upgrade is repeatable and preserves legacy grants without restoring revoked grants', async () => {
+  const legacy = await makeUser('upgrade-legacy', UserRole.MANAGER, [ti.id]);
+  const initialized = await makeUser('upgrade-initialized', UserRole.VIEWER, [ti.id]);
+  await prisma.userPermission.deleteMany({ where: { userId: legacy.id } });
+  await prisma.user.update({ where: { id: legacy.id }, data: { permissionsInitialized: false, canGlobalAssetLookup: true } });
+  await prisma.user.update({ where: { id: initialized.id }, data: { canGlobalAssetLookup: true } });
+  const sql = await readFile(new URL('../prisma/updates/20261111_workflows.sql', import.meta.url), 'utf8');
+  for (let run = 0; run < 2; run++) {
+    for (const statement of sql.split(';').filter(part => part.trim())) await prisma.$executeRawUnsafe(statement);
+  }
+  const migrated = await prisma.user.findUniqueOrThrow({ where: { id: legacy.id }, include: { permissions: true } });
+  assert.equal(migrated.permissionsInitialized, true);
+  assert.ok(migrated.permissions.some(grant => grant.permission === 'GLOBAL_ASSET_LOOKUP'));
+  assert.ok(migrated.permissions.some(grant => grant.permission === 'ASSET_CREATE'));
+  assert.equal(await prisma.userPermission.count({ where: { userId: initialized.id, permission: 'GLOBAL_ASSET_LOOKUP' } }), 0);
+  await expect('GET', `/assets/global-lookup?patrimony=PC1-${tag}`, legacy, undefined, 200);
+  await expect('GET', `/assets/global-lookup?patrimony=PC1-${tag}`, initialized, undefined, 403);
+});
+
+test('non-patrimonial creation requires a request ID and replays without duplicate opening stock', async () => {
+  const data = { poolId: ti.id, categoryId: c2666.id, name: `Once-${tag}`, quantity: 9 };
+  const missing = await app.inject({ method: 'POST', url: '/non-patrimonial', headers: auth(manager), payload: data });
+  assert.equal(missing.statusCode, 400);
+  const payload = { ...data, requestId: randomUUID() };
+  const first = await expect('POST', '/non-patrimonial', manager, payload, 201);
+  const retry = await expect('POST', '/non-patrimonial', manager, payload, 201);
+  assert.equal(first.id, retry.id);
+  assert.equal(await prisma.nonPatrimonialItem.count({ where: { name: data.name } }), 1);
+  assert.equal(await prisma.nonPatrimonialMovement.count({ where: { itemId: first.id } }), 1);
+  await expect('POST', '/non-patrimonial', manager, { ...payload, quantity: 10 }, 409);
+});
+
+test('non-patrimonial entries, exits and adjustments replay once even with simultaneous requests', async () => {
+  const item = await expect('POST', '/non-patrimonial', manager, { poolId: ti.id, categoryId: c2666.id, name: 'Retry movements', quantity: 5 }, 201);
+  const path = `/non-patrimonial/${item.id}/stock`;
+  const missing = await app.inject({ method: 'POST', url: path, headers: auth(manager), payload: { type: 'ENTRY', quantity: 1, notes: 'Missing ID' } });
+  assert.equal(missing.statusCode, 400);
+  for (const [type, quantity, expected] of [['ENTRY', 4, 9], ['EXIT', 2, 7], ['ADJUSTMENT', 3, 3]] as const) {
+    const payload = { requestId: randomUUID(), type, quantity, notes: 'Retry-safe movement' };
+    const responses = await Promise.all([req('POST', path, manager, payload), req('POST', path, manager, payload)]);
+    for (const response of responses) assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(responses[0].json(), responses[1].json());
+    assert.equal((await prisma.nonPatrimonialItem.findUniqueOrThrow({ where: { id: item.id } })).quantity, expected);
+    await expect('POST', path, manager, { ...payload, quantity: quantity + 1 }, 409);
+  }
+  assert.equal(await prisma.nonPatrimonialMovement.count({ where: { itemId: item.id } }), 4);
+});
+
+test('non-patrimonial transfers replay once, use destination data and preserve existing destination metadata', async () => {
+  const operator = await makeUser('np-transfer-safe', UserRole.MANAGER, [ti.id, rh.id]);
+  const item = await expect('POST', '/non-patrimonial', operator, { poolId: ti.id, categoryId: c2666.id, name: 'Transfer utensils', quantity: 10, location: 'Source room', responsible: 'Source person' }, 201);
+  const payload = { requestId: randomUUID(), toPoolId: rh.id, quantity: 4, notes: 'Deliver to RH', toLocation: 'RH cabinet', toResponsible: 'Destination person' };
+  const path = `/non-patrimonial/${item.id}/transfer`;
+  const responses = await Promise.all([req('POST', path, operator, payload), req('POST', path, operator, payload)]);
+  for (const response of responses) assert.equal(response.statusCode, 200, response.body);
+  assert.deepEqual(responses[0].json(), responses[1].json());
+  const first = responses[0].json();
+  assert.equal(first.source.quantity, 6); assert.equal(first.destination.quantity, 4);
+  assert.equal(first.destination.location, 'RH cabinet'); assert.equal(first.destination.responsible, 'Destination person');
+  const second = await expect('POST', path, operator, { ...payload, requestId: randomUUID(), quantity: 2, toLocation: 'Must not overwrite', toResponsible: 'Must not overwrite' }, 200);
+  assert.equal(second.destination.id, first.destination.id); assert.equal(second.destination.quantity, 6);
+  assert.equal(second.destination.location, 'RH cabinet'); assert.equal(second.destination.responsible, 'Destination person');
+  assert.equal(await prisma.nonPatrimonialMovement.count({ where: { itemId: item.id, type: 'TRANSFER_OUT' } }), 2);
+  await prisma.userPool.delete({ where: { userId_poolId: { userId: operator.id, poolId: rh.id } } });
+  await expect('POST', path, operator, payload, 404);
+});
+
+test('a new non-patrimonial destination leaves unspecified custody data pending rather than copying the source', async () => {
+  const operator = await makeUser('np-pending-destination', UserRole.MANAGER, [ti.id, rh.id]);
+  const item = await expect('POST', '/non-patrimonial', operator, { poolId: ti.id, categoryId: c2666.id, name: 'Unassigned delivery', quantity: 2, location: 'Old room', responsible: 'Old person' }, 201);
+  const result = await expect('POST', `/non-patrimonial/${item.id}/transfer`, operator, { requestId: randomUUID(), toPoolId: rh.id, quantity: 2, notes: 'Awaiting allocation' }, 200);
+  assert.equal(result.destination.location, null); assert.equal(result.destination.responsible, null);
+  assert.equal(result.source.location, 'Old room'); assert.equal(result.source.responsible, 'Old person');
+});
+
+test('available-component transfers preserve global totals and installed units, and reuse compatible profiles', async () => {
+  const operator = await makeUser('available-transfer', UserRole.MANAGER, [ti.id, rh.id]);
+  const p = await makeProfile('available-transfer', 10);
+  await expect('POST', '/stock/assign', manager, { requestId: randomUUID(), poolId: ti.id, assetIds: [pc2.id], components: [{ profileId: p.id, quantity: 2, origin: 'FROM_STOCK' }] }, 200);
+  const before = (await expect('GET', '/stock/catalog', admin, undefined, 200)).totals;
+  const payload = { requestId: randomUUID(), toPoolId: rh.id, quantity: 3, notes: 'Move spare units' };
+  const path = `/stock/profiles/${p.id}/transfer`;
+  await expect('POST', path, manager, payload, 404);
+  const responses = await Promise.all([req('POST', path, operator, payload), req('POST', path, operator, payload)]);
+  for (const response of responses) assert.equal(response.statusCode, 200, response.body);
+  assert.deepEqual(responses[0].json(), responses[1].json());
+  const first = responses[0].json(); assert.equal(first.source.available, 5); assert.equal(first.destination.available, 3);
+  const second = await expect('POST', path, operator, { ...payload, requestId: randomUUID(), quantity: 1 }, 200);
+  assert.equal(second.destination.id, first.destination.id); assert.equal(second.destination.available, 4);
+  assert.deepEqual((await expect('GET', '/stock/catalog', admin, undefined, 200)).totals, before);
+  assert.equal(await prisma.assetComponent.count({ where: { profileId: p.id, removedAt: null, quantity: 2 } }), 1);
+  assert.equal(await prisma.stockMovement.count({ where: { operationId: payload.requestId } }), 2);
+  await expect('POST', path, operator, { ...payload, quantity: 2 }, 409);
+  await expect('POST', path, operator, { ...payload, requestId: randomUUID(), toPoolId: ti.id }, 400);
+  await prisma.userPool.delete({ where: { userId_poolId: { userId: operator.id, poolId: rh.id } } });
+  await expect('POST', path, operator, payload, 404);
+});
+
+test('available transfers reject incompatible or archived profiles and insufficient stock atomically', async () => {
+  const operator = await makeUser('available-conflicts', UserRole.MANAGER, [ti.id, rh.id]);
+  const p = await makeProfile('available-conflicts', 3);
+  const destination = await expect('POST', '/stock/profiles', operator, { requestId: randomUUID(), poolId: rh.id, categoryId: c3200.id, name: p.name, initialAvailable: 0 }, 201);
+  const path = `/stock/profiles/${p.id}/transfer`, payload = { requestId: randomUUID(), toPoolId: rh.id, quantity: 2, notes: 'Conflicting specs' };
+  await expect('POST', path, operator, payload, 409);
+  assert.equal((await prisma.itemProfile.findUniqueOrThrow({ where: { id: p.id } })).availableQty, 3);
+  assert.equal(await prisma.stockMovement.count({ where: { operationId: payload.requestId } }), 0);
+  await expect('PUT', `/stock/profiles/${destination.id}`, operator, { categoryId: p.categoryId }, 200);
+  await expect('DELETE', `/stock/profiles/${destination.id}`, operator, undefined, 200);
+  await expect('POST', path, operator, { ...payload, requestId: randomUUID() }, 409);
+  await expect('POST', path, operator, { ...payload, requestId: randomUUID(), quantity: 4 }, 409);
+  const missing = await app.inject({ method: 'POST', url: path, headers: auth(operator), payload: { toPoolId: rh.id, quantity: 1, notes: 'Missing ID' } });
+  assert.equal(missing.statusCode, 400);
+});
+
+test('concurrent transfers of different operations cannot overdraw the available stock', async () => {
+  const operator = await makeUser('available-race', UserRole.MANAGER, [ti.id, rh.id]);
+  const p = await makeProfile('available-race', 5);
+  await expect('POST', '/stock/profiles', operator, { requestId: randomUUID(), poolId: rh.id, categoryId: p.categoryId, name: p.name, initialAvailable: 0 }, 201);
+  const responses = await Promise.all([1, 2].map(() => req('POST', `/stock/profiles/${p.id}/transfer`, operator, { requestId: randomUUID(), toPoolId: rh.id, quantity: 4, notes: 'Concurrent transfer' })));
+  assert.deepEqual(responses.map(response => response.statusCode).sort(), [200, 409]);
+  assert.equal((await prisma.itemProfile.findUniqueOrThrow({ where: { id: p.id } })).availableQty, 1);
+});
+
+test('import reports retain rejected source rows, export safe CSV, and enforce ownership', async () => {
+  const csv = `patrimonio,nome,setor,categoria\nREPORT-${tag},Valid row,${ti.name},${computer.name}\n,=HYPERLINK("danger"),${ti.name},${computer.name}\n`;
+  const preview = await analyzed(manager, '/imports/assets', 'CREATE', csv); assert.equal(preview.validRows, 1); assert.equal(preview.errorRows, 1);
+  const response = await upload(manager, '/imports/assets', csv, preview.previewId); assert.equal(response.statusCode, 207, response.body);
+  const job = response.json();
+  const report = await expect('GET', `/imports/${job.id}`, manager, undefined, 200);
+  assert.equal(report.errors.length, 1); assert.equal(report.errors[0].row, 3); assert.ok(report.errors[0].data.nome.startsWith('='));
+  const download = await req('GET', `/imports/${job.id}/errors.csv`, manager); assert.equal(download.statusCode, 200);
+  assert.ok(download.headers['content-type']?.includes('text/csv'));
+  assert.ok(download.body.includes('motivo_erro')); assert.ok(download.body.includes("'=HYPERLINK")); assert.ok(!download.body.includes('Valid row'));
+  const retryPreview = await analyzed(manager, '/imports/assets', 'CREATE', download.body);
+  assert.equal(retryPreview.totalRows, 1); assert.equal(retryPreview.errorRows, 1);
+  const otherUser = await makeUser('report-not-owner', UserRole.MANAGER, [ti.id]);
+  await expect('GET', `/imports/${job.id}`, otherUser, undefined, 404);
+  await expect('GET', `/imports/${job.id}/errors.csv`, otherUser, undefined, 404);
+  await expect('GET', `/imports/${job.id}`, admin, undefined, 200);
+});
+
+test('import reports show commit-time rejections and remain compatible with old error records', async () => {
+  const item = await expect('POST', '/non-patrimonial', manager, { poolId: ti.id, categoryId: c2666.id, name: 'Report stale balance', quantity: 10 }, 201);
+  const csv = `codigo_interno,nome,setor,categoria,quantidade\n${item.internalCode},Report stale balance,${ti.name},${c2666.name},3\n`;
+  const preview = await analyzed(manager, '/imports/non-patrimonial', 'SET_BALANCE', csv);
+  await expect('POST', `/non-patrimonial/${item.id}/stock`, manager, { type: 'ENTRY', quantity: 1, notes: 'Concurrent receipt' }, 200);
+  const result = await upload(manager, '/imports/non-patrimonial', csv, preview.previewId); assert.equal(result.statusCode, 207);
+  const report = await expect('GET', `/imports/${result.json().id}`, manager, undefined, 200);
+  assert.equal(report.errors[0].data.codigo_interno, item.internalCode); assert.ok(report.errors[0].message.includes('mudou'));
+  const old = await prisma.importJob.create({ data: { fileName: 'old.csv', fileType: 'csv', userId: manager.id, poolIds: [ti.id], errorRows: 1, errors: [{ row: 2, message: 'Legacy rejection' }] } });
+  const legacy = await expect('GET', `/imports/${old.id}`, manager, undefined, 200); assert.equal(legacy.errors[0].message, 'Legacy rejection');
+  assert.ok((await req('GET', `/imports/${old.id}/errors.csv`, manager)).body.includes('Legacy rejection'));
+  const revoked = await makeUser('report-revoked', UserRole.MANAGER, [ti.id]);
+  const privateJob = await prisma.importJob.create({ data: { fileName: 'revoked.csv', fileType: 'csv', userId: revoked.id, poolIds: [ti.id] } });
+  await prisma.userPool.delete({ where: { userId_poolId: { userId: revoked.id, poolId: ti.id } } });
+  await expect('GET', `/imports/${privateJob.id}`, revoked, undefined, 404);
+  await expect('GET', `/imports/${privateJob.id}/errors.csv`, revoked, undefined, 404);
 });

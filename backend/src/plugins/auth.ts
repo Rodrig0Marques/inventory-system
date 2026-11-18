@@ -55,6 +55,7 @@ export default fp(async (app) => {
           active: true,
           role: true,
           tokenVersion: true,
+          permissionsInitialized: true,
           canGlobalAssetLookup: true,
           canGlobalDashboardStats: true,
           permissions: { select: { permission: true } },

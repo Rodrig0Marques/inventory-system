@@ -14,6 +14,7 @@ import { stockRoutes } from './modules/stock/routes.js';
 import { nonPatrimonialRoutes } from './modules/non-patrimonial/routes.js';
 import { Prisma } from '@prisma/client';
 import { userRoutes } from './modules/users/routes.js';
+import { auditRoutes } from './modules/audit/routes.js';
 
 export async function buildApp(logger = true) {
 const app = Fastify({ logger });
@@ -32,6 +33,7 @@ app.register(importRoutes, { prefix: '/imports' });
 app.register(userRoutes, { prefix: '/users' });
 app.register(stockRoutes, { prefix: '/stock' });
 app.register(nonPatrimonialRoutes, { prefix: '/non-patrimonial' });
+app.register(auditRoutes, { prefix: '/audit' });
 
 app.setErrorHandler((error, _request, reply) => {
   app.log.error(error);

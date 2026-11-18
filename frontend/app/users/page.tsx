@@ -24,7 +24,7 @@ const permissionGroups: Array<{ title: string; permissions: PermissionOption[] }
     { code: 'ASSET_CREATE', label: 'Cadastrar ativos', description: 'Cria patrimônios nos Setores permitidos.' },
     { code: 'ASSET_EDIT', label: 'Editar ativos', description: 'Altera cadastro, status e classificação dos ativos permitidos.' },
     { code: 'ASSET_MOVE', label: 'Movimentar ativos', description: 'Move ativos entre Setores/pastas aos quais o usuário possui acesso.' },
-    { code: 'ASSET_DELETE', label: 'Excluir ativos', description: 'Exclui ativos quando as regras de integridade permitem.' },
+    { code: 'ASSET_DELETE', label: 'Arquivar e reativar ativos', description: 'Preserva o cadastro e o histórico ao retirar ou devolver ativos ao inventário.' },
     { code: 'IMPORT_ASSETS', label: 'Importar ativos', description: 'Analisa e importa planilhas para os Setores permitidos.' },
   ] },
   { title: 'Itens não patrimoniados', permissions: [

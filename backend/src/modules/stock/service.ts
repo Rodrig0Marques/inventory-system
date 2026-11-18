@@ -15,6 +15,7 @@ export type ComponentInput = z.infer<typeof componentSchema>;
 
 export async function attachComponents(tx: Prisma.TransactionClient, request: FastifyRequest, assets: Asset[], components: ComponentInput[], operationId: string) {
   if (!assets.length) fail(400, 'Selecione pelo menos um ativo.');
+  if (assets.some(a => a.archivedAt)) fail(409, 'Reative os ativos arquivados antes de instalar componentes.');
   const poolId = assets[0].poolId;
   if (assets.some(a => a.poolId !== poolId)) fail(400, 'Selecione ativos de um único Setor por lote.');
   if (assets.some(a => ['DISPOSED', 'SOLD', 'LOST', 'INACTIVE'].includes(a.status))) fail(400, 'Não é permitido instalar componentes em ativos baixados, vendidos, extraviados ou inativos.');

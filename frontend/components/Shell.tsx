@@ -2,37 +2,13 @@
 
 import Link from 'next/link';
 import { CiaLogo } from './CiaLogo';
+import { Icon } from './Icon';
+import { CommandMenu } from './CommandMenu';
+import { navigation } from '../lib/navigation';
 import { usePathname, useRouter } from 'next/navigation';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { clearSession, getSessionUser, roleLabel, setSessionUser, type SessionUser, type UserRole } from '../lib/session';
-
-type IconName = 'dashboard' | 'assets' | 'pools' | 'structure' | 'imports' | 'users';
-type NavItem = { href: string; label: string; icon: IconName; roles?: UserRole[] };
-
-const links: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: 'dashboard' },
-  { href: '/assets', label: 'Ativos', icon: 'assets' },
-  { href: '/non-patrimonial', label: 'Itens não patrimoniados', icon: 'assets' },
-  { href: '/stock', label: 'Estoque e componentes', icon: 'assets' },
-  { href: '/pools', label: 'Setores', icon: 'pools' },
-  { href: '/structure', label: 'Estrutura', icon: 'structure' },
-  { href: '/imports', label: 'Importações', icon: 'imports' },
-  { href: '/users', label: 'Usuários', icon: 'users', roles: ['ADMIN'] },
-];
-
-function NavIcon({ name }: { name: IconName }) {
-  const paths: Record<IconName, ReactNode> = {
-    dashboard: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /></>,
-    assets: <><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z" /><path d="m4 7.5 8 4.5 8-4.5M12 12v9" /></>,
-    pools: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" /></>,
-    structure: <><path d="M4 5h6l2 2h8v12H4z" /><path d="M8 11h8M8 15h5" /></>,
-    imports: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 20h14" /></>,
-    users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
-  };
-
-  return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
-}
+import { clearSession, getSessionUser, roleLabel, setSessionUser, type SessionUser } from '../lib/session';
 
 type Theme = 'light' | 'dark';
 const THEME_KEY = 'inventory_theme';
@@ -50,6 +26,95 @@ export function Shell({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [theme, setTheme] = useState<Theme>('light');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [online, setOnline] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const lastPath = useRef<string | null>(null);
+  const traversingHistory = useRef(false);
+
+  useEffect(() => {
+    const onPopState = () => { traversingHistory.current = window.location.pathname !== lastPath.current; };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    // Mark entries reached inside the app without changing Next's history data.
+    // Existing entries retain their marker when traversed or reloaded.
+    if (lastPath.current && lastPath.current !== pathname && !traversingHistory.current) {
+      window.history.replaceState({ ...window.history.state, inventoryCanGoBack: lastPath.current !== '/login' }, '');
+    }
+    lastPath.current = pathname;
+    traversingHistory.current = false;
+  }, [pathname]);
+
+  function goBack() {
+    if (window.history.state?.inventoryCanGoBack) {
+      router.back();
+      return;
+    }
+    const segments = pathname.split('/').filter(Boolean);
+    const fallback = segments.length > 1 ? `/${segments.slice(0, -1).join('/')}` : '/';
+    // Replacing a direct entry does not create a previous in-app history entry.
+    traversingHistory.current = true;
+    router.replace(fallback);
+  }
+
+  useEffect(() => {
+    setCollapsed(localStorage.getItem('inventory_sidebar_collapsed') === 'true');
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && window.location.pathname !== '/login') {
+        event.preventDefault(); setCommandOpen(current => !current);
+      }
+    };
+    document.addEventListener('keydown', shortcut);
+    return () => document.removeEventListener('keydown', shortcut);
+  }, []);
+
+  function toggleSidebar() {
+    setCollapsed(current => {
+      localStorage.setItem('inventory_sidebar_collapsed', String(!current));
+      return !current;
+    });
+  }
+
+  useEffect(() => { setMenuOpen(false); setCommandOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener('online', update); window.addEventListener('offline', update);
+    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 960px)');
+    const update = () => { setIsMobile(media.matches); if (!media.matches) setMenuOpen(false); };
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.querySelector<HTMLAnchorElement>('.sidebar-nav a[aria-current="page"]')?.focus();
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus(); }
+      if (event.key === 'Tab') {
+        const focusable = [menuButton.current, ...Array.from(document.querySelectorAll<HTMLElement>('.sidebar a, .sidebar button'))].filter((element): element is HTMLElement => Boolean(element?.getClientRects().length));
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    document.addEventListener('keydown', close);
+    return () => { document.removeEventListener('keydown', close); document.body.style.overflow = previousOverflow; };
+  }, [menuOpen]);
 
   useEffect(() => {
     const current = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
@@ -65,30 +130,34 @@ export function Shell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (pathname === '/login') {
-      setReady(true);
+      setReady(false); setUser(null);
       return;
     }
 
-    setReady(false);
     const stored = getSessionUser();
     const token = localStorage.getItem('inventory_token');
     if (!token) {
+      setReady(false);
       router.replace('/login');
       return;
     }
 
-    if (pathname.startsWith('/users') && stored && stored.role !== 'ADMIN') {
+    if ((pathname.startsWith('/users') || pathname.startsWith('/audit')) && stored && stored.role !== 'ADMIN') {
+      setReady(false);
       router.replace('/');
       return;
     }
 
     if (stored) setUser(stored);
 
+    let live = true;
     api<SessionUser>('/auth/me')
       .then(current => {
+        if (!live) return;
         setSessionUser(current);
         setUser(current);
-        if (pathname.startsWith('/users') && current.role !== 'ADMIN') {
+        if ((pathname.startsWith('/users') || pathname.startsWith('/audit')) && current.role !== 'ADMIN') {
+          setReady(false);
           router.replace('/');
           return;
         }
@@ -96,8 +165,9 @@ export function Shell({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         // O helper da API já redireciona para login em caso de 401.
-        if (stored && !(pathname.startsWith('/users') && stored.role !== 'ADMIN')) setReady(true);
+        if (live && stored && !((pathname.startsWith('/users') || pathname.startsWith('/audit')) && stored.role !== 'ADMIN')) setReady(true);
       });
+    return () => { live = false; };
   }, [pathname, router]);
 
   if (pathname === '/login') return <>
@@ -113,17 +183,20 @@ export function Shell({ children }: { children: ReactNode }) {
     </button>
     {children}
   </>;
-  if (!ready) return <main className="center"><div className="loader" /></main>;
+  if (!ready) return <main className="center app-loading" role="status" aria-label="Carregando inventário"><CiaLogo size={52} /><div className="loader" /><p>Preparando seu espaço de trabalho…</p></main>;
 
-  const visibleLinks = links.filter(item => !item.roles || (user && item.roles.includes(user.role)));
+  const visibleLinks = navigation.filter(item => !item.roles || (user && item.roles.includes(user.role)));
+  const currentPage = navigation.find(item => item.href === pathname || (item.href !== '/' && pathname.startsWith(item.href + '/')))?.label || 'Inventário';
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className={`app-shell modern-workspace${menuOpen ? ' menu-open' : ''}${collapsed ? ' sidebar-collapsed' : ''}`}>
+      <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
+      {menuOpen && <button className="sidebar-overlay" aria-label="Fechar menu" onClick={() => { setMenuOpen(false); menuButton.current?.focus(); }} />}
+      <aside className="sidebar" id="main-navigation" aria-label="Menu principal" inert={isMobile && !menuOpen}>
         <div className="brand-wrap">
           <CiaLogo size={42} />
-          <div>
-            <div className="brand">Inventário</div>
+          <div className="brand-copy">
+            <div className="brand">Inventário<span className="brand-dot">.</span></div>
             <div className="sidebar-muted">Gestão patrimonial</div>
           </div>
           <button
@@ -137,17 +210,22 @@ export function Shell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <nav className="sidebar-nav">
-          <div className="nav-label">Menu</div>
-          {visibleLinks.map(item => (
-            <Link key={item.href} href={item.href} className={(pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'))) ? 'active' : ''}>
-              <NavIcon name={item.icon} />
+        <nav className="sidebar-nav" aria-label="Módulos do inventário">
+          {['Workspace', 'Organização', 'Administração'].map(group => visibleLinks.some(item => item.group === group) && <div className="nav-group" key={group}>
+          <div className="nav-label">{group}</div>
+          {visibleLinks.filter(item => item.group === group).map(item => (
+            <Link key={item.href} href={item.href} title={collapsed && !isMobile ? item.label : undefined} aria-label={item.label} onClick={() => setMenuOpen(false)} aria-current={(pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'))) ? 'page' : undefined} className={(pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'))) ? 'active' : ''}>
+              <Icon name={item.icon} />
               <span>{item.label}</span>
+              <span className="nav-active-dot" aria-hidden="true" />
             </Link>
           ))}
+          </div>)}
         </nav>
 
         <div className="sidebar-footer">
+          <button className="sidebar-command" type="button" onClick={() => { setMenuOpen(false); setCommandOpen(true); }} title="Busca rápida (Ctrl K)"><Icon name="command" /><span>Busca rápida</span><kbd>Ctrl K</kbd></button>
+          <div className="workspace-card"><span className="workspace-emblem"><Icon name="shield" /></span><div><strong>Cia do Crédito</strong><small>Espaço corporativo</small></div><span className="workspace-dot" aria-hidden="true" /></div>
           <div className="session-card">
             <div className="user-avatar">{user?.name?.slice(0, 1).toUpperCase() || 'U'}</div>
             <div className="session-user-copy">
@@ -155,18 +233,22 @@ export function Shell({ children }: { children: ReactNode }) {
               <small>{user ? roleLabel(user.role) : 'Sessão ativa'}</small>
             </div>
           </div>
-          <button className="logout-button" onClick={() => { clearSession(); router.push('/login'); }}>
-            Sair da conta
+          <button className="logout-button" aria-label="Sair da conta" title={collapsed ? 'Sair da conta' : undefined} onClick={() => { clearSession(); router.push('/login'); }}>
+            <Icon name="logout" /><span>Sair da conta</span>
           </button>
         </div>
       </aside>
 
       <main className="main-area">
         <header className="topbar">
-          <div>
-            <strong>Inventário corporativo</strong>
+          <div className="topbar-location">
+            <button ref={menuButton} type="button" className="menu-button" aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'} aria-expanded={menuOpen} aria-controls="main-navigation" onClick={() => setMenuOpen(!menuOpen)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg></button>
+            <button type="button" className="sidebar-collapse" onClick={toggleSidebar} aria-label={collapsed ? 'Expandir navegação' : 'Recolher navegação'} aria-expanded={!collapsed}><Icon name="panel" /></button>
+            {pathname !== '/' && <button type="button" className="page-back-button" onClick={goBack} aria-label="Voltar à página anterior" title="Voltar à página anterior"><Icon name="arrow-left" /><span>Voltar</span></button>}
+            <span className="breadcrumb-root"><Link href="/">Workspace</Link><span aria-hidden="true">/</span></span><strong className="breadcrumb-current">{currentPage}</strong>
           </div>
-          <div className="topbar-actions">
+          <div className="topbar-actions" inert={isMobile && menuOpen}>
+            <button type="button" className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Abrir busca rápida"><Icon name="search" /><span>Buscar no inventário…</span><kbd>Ctrl K</kbd></button>
             <button
               type="button"
               className="theme-toggle"
@@ -177,10 +259,13 @@ export function Shell({ children }: { children: ReactNode }) {
               <ThemeIcon theme={theme} />
               <span>{theme === 'dark' ? 'Claro' : 'Escuro'}</span>
             </button>
+            <div className="topbar-user" title={user?.name || 'Usuário'}><span className="user-avatar">{user?.name?.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'U'}</span></div>
           </div>
         </header>
-        <div className="content">{children}</div>
+        {!online && <div className="connection-notice" role="status"><Icon name="alert" />Você está sem conexão. Reconecte para consultar ou salvar alterações.</div>}
+        <div className="content" id="main-content" tabIndex={-1} inert={isMobile && menuOpen}>{children}</div>
       </main>
+      <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} user={user} />
     </div>
   );
 }

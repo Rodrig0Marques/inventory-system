@@ -1,8 +1,8 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../lib/api';
-import { categoryPath } from '../../lib/inventory';
+import { categoryPath, requestId } from '../../lib/inventory';
 import { getSessionUser, hasPermission } from '../../lib/session';
 
 type Pool = { id: string; name: string; active?: boolean };
@@ -79,9 +79,22 @@ export default function NonPatrimonialPage() {
   const [transferPoolId, setTransferPoolId] = useState('');
   const [transferQuantity, setTransferQuantity] = useState(1);
   const [transferNotes, setTransferNotes] = useState('');
+  const [transferLocation, setTransferLocation] = useState('');
+  const [transferResponsible, setTransferResponsible] = useState('');
+  const pending = useRef<{ signature: string; id: string } | null>(null);
   const [historyItem, setHistoryItem] = useState<Item | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  async function post(path: string, data: object) {
+    const signature = JSON.stringify([path, data]);
+    if (pending.current?.signature !== signature) pending.current = { signature, id: requestId() };
+    const result = await api<{ message?: string }>(path, { method: 'POST', body: JSON.stringify({ ...data, requestId: pending.current.id }) });
+    pending.current = null;
+    return result;
+  }
 
   const categoryOptions = useMemo(
     () => [...categories].sort((a, b) => categoryPath(categories, a.id).localeCompare(categoryPath(categories, b.id), 'pt-BR')),
@@ -165,10 +178,7 @@ export default function NonPatrimonialPage() {
         });
         setSuccess('Item atualizado com sucesso. O saldo é alterado pela ação Movimentar.');
       } else {
-        await api('/non-patrimonial', {
-          method: 'POST',
-          body: JSON.stringify({ ...form, description: form.description || null, manufacturer: form.manufacturer || null, model: form.model || null, location: form.location || null, responsible: form.responsible || null }),
-        });
+        await post('/non-patrimonial', { ...form, description: form.description || null, manufacturer: form.manufacturer || null, model: form.model || null, location: form.location || null, responsible: form.responsible || null });
         setSuccess('Item não patrimoniado cadastrado. O código interno foi gerado automaticamente.');
       }
       resetForm();
@@ -179,13 +189,10 @@ export default function NonPatrimonialPage() {
   }
 
   async function submitStock(event: FormEvent) {
-    event.preventDefault(); if (!stockAction) return;
+    event.preventDefault(); if (!stockAction || saving) return;
     setError(''); setSuccess(''); setSaving(true);
     try {
-      await api(`/non-patrimonial/${stockAction.item.id}/stock`, {
-        method: 'POST',
-        body: JSON.stringify({ type: stockAction.type, quantity: stockQuantity, notes: stockNotes }),
-      });
+      await post(`/non-patrimonial/${stockAction.item.id}/stock`, { type: stockAction.type, quantity: stockQuantity, notes: stockNotes });
       setStockAction(null); setStockNotes(''); setStockQuantity(1);
       setSuccess('Movimentação registrada com sucesso.');
       await loadItems();
@@ -194,13 +201,10 @@ export default function NonPatrimonialPage() {
   }
 
   async function submitTransfer(event: FormEvent) {
-    event.preventDefault(); if (!transferAction) return;
+    event.preventDefault(); if (!transferAction || saving) return;
     setError(''); setSuccess(''); setSaving(true);
     try {
-      await api(`/non-patrimonial/${transferAction.item.id}/transfer`, {
-        method: 'POST',
-        body: JSON.stringify({ toPoolId: transferPoolId, quantity: transferQuantity, notes: transferNotes }),
-      });
+      await post(`/non-patrimonial/${transferAction.item.id}/transfer`, { toPoolId: transferPoolId, quantity: transferQuantity, notes: transferNotes, toLocation: transferLocation || null, toResponsible: transferResponsible || null });
       setTransferAction(null); setTransferPoolId(''); setTransferNotes(''); setTransferQuantity(1);
       setSuccess('Transferência registrada com sucesso.');
       await loadItems();
@@ -208,9 +212,9 @@ export default function NonPatrimonialPage() {
     finally { setSaving(false); }
   }
 
-  async function openHistory(item: Item) {
+  async function openHistory(item: Item, nextPage = 1) {
     setHistoryItem(item); setMovements([]); setLoadingHistory(true); setError('');
-    try { setMovements(await api<Movement[]>(`/non-patrimonial/${item.id}/movements`)); }
+    try { const result = await api<{ items: Movement[]; total: number }>(`/non-patrimonial/${item.id}/movements?page=${nextPage}&pageSize=50`); setMovements(result.items); setHistoryTotal(result.total); setHistoryPage(nextPage); }
     catch (e) { setError(e instanceof Error ? e.message : 'Falha ao carregar o histórico.'); }
     finally { setLoadingHistory(false); }
   }
@@ -283,8 +287,8 @@ export default function NonPatrimonialPage() {
             <td><span className={`status-badge ${item.active ? 'status-active' : 'status-inactive'}`}><span />{item.active ? 'Ativo' : 'Arquivado'}</span></td>
             <td><div className="row-actions">
               {item.active && canEdit && <button className="table-action" type="button" onClick={() => startEdit(item)}>Editar</button>}
-              {item.active && canMove && <button className="table-action" type="button" onClick={() => { setStockAction({ item, type: 'ENTRY' }); setStockQuantity(1); setStockNotes(''); }}>Movimentar</button>}
-              {item.active && canMove && <button className="table-action" type="button" disabled={item.quantity === 0} onClick={() => { setTransferAction({ item }); setTransferQuantity(1); setTransferPoolId(''); setTransferNotes(''); }}>Transferir</button>}
+              {item.active && canMove && <button className="table-action" type="button" onClick={() => { pending.current = null; setStockAction({ item, type: 'ENTRY' }); setStockQuantity(1); setStockNotes(''); }}>Movimentar</button>}
+              {item.active && canMove && <button className="table-action" type="button" disabled={item.quantity === 0} onClick={() => { pending.current = null; setTransferAction({ item }); setTransferQuantity(1); setTransferPoolId(''); setTransferNotes(''); setTransferLocation(''); setTransferResponsible(''); }}>Transferir</button>}
               <button className="table-action" type="button" onClick={() => openHistory(item)}>Histórico</button>
               {item.active && canArchive && <button className="icon-danger" type="button" disabled={item.quantity > 0} title={item.quantity > 0 ? 'Zere ou transfira o saldo antes de arquivar.' : 'Arquivar'} onClick={() => archive(item)}>Arquivar</button>}
               {!item.active && canEdit && <button className="table-action" type="button" onClick={() => reactivate(item)}>Reativar</button>}
@@ -297,6 +301,7 @@ export default function NonPatrimonialPage() {
 
     {stockAction && <div className="modal-backdrop" onMouseDown={() => setStockAction(null)}><div className="modal-card" onMouseDown={e => e.stopPropagation()}>
       <div className="modal-heading"><div><div className="eyebrow">Saldo</div><h2>Movimentar {stockAction.item.name}</h2><p>Saldo atual: <strong>{stockAction.item.quantity}</strong></p></div><button type="button" className="modal-close" onClick={() => setStockAction(null)}>×</button></div>
+      {error && <div className="notice notice-error" role="alert">{error}</div>}
       <form className="stack-form" onSubmit={submitStock}>
         <div className="form-field"><label>Operação</label><select value={stockAction.type} onChange={e => setStockAction({ ...stockAction, type: e.target.value as 'ENTRY' | 'EXIT' | 'ADJUSTMENT' })}><option value="ENTRY">Entrada</option><option value="EXIT">Baixa</option><option value="ADJUSTMENT">Ajustar saldo para</option></select></div>
         <div className="form-field"><label>{stockAction.type === 'ADJUSTMENT' ? 'Novo saldo' : 'Quantidade'}</label><input type="number" min={stockAction.type === 'ADJUSTMENT' ? 0 : 1} max={1000000} required value={stockQuantity} onChange={e => setStockQuantity(Number(e.target.value))} /></div>
@@ -307,10 +312,14 @@ export default function NonPatrimonialPage() {
 
     {transferAction && <div className="modal-backdrop" onMouseDown={() => setTransferAction(null)}><div className="modal-card" onMouseDown={e => e.stopPropagation()}>
       <div className="modal-heading"><div><div className="eyebrow">Transferência</div><h2>{transferAction.item.name}</h2><p>Origem: {transferAction.item.pool.name} | Saldo: {transferAction.item.quantity}</p></div><button type="button" className="modal-close" onClick={() => setTransferAction(null)}>×</button></div>
+      {error && <div className="notice notice-error" role="alert">{error}</div>}
       <form className="stack-form" onSubmit={submitTransfer}>
         <div className="form-field"><label>Setor de destino *</label><select required value={transferPoolId} onChange={e => setTransferPoolId(e.target.value)}><option value="">Selecione</option>{pools.filter(pool => pool.id !== transferAction.item.poolId && pool.active !== false).map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}</select></div>
         <div className="form-field"><label>Quantidade *</label><input type="number" min={1} max={transferAction.item.quantity} required value={transferQuantity} onChange={e => setTransferQuantity(Number(e.target.value))} /></div>
         <div className="form-field"><label>Motivo *</label><textarea required minLength={3} maxLength={2000} rows={3} value={transferNotes} onChange={e => setTransferNotes(e.target.value)} /></div>
+        <label className="form-field"><span>Localização no destino (opcional)</span><input maxLength={4000} value={transferLocation} onChange={e => setTransferLocation(e.target.value)} /></label>
+        <label className="form-field"><span>Responsável no destino (opcional)</span><input maxLength={4000} value={transferResponsible} onChange={e => setTransferResponsible(e.target.value)} /></label>
+        <p className="field-help">Estes dados são usados para um novo cadastro no destino. Em branco, ficam pendentes. Se o item já existir no destino, sua localização e seu responsável serão preservados.</p>
         <button className="primary" disabled={saving}>Transferir</button>
       </form>
     </div></div>}
@@ -321,6 +330,7 @@ export default function NonPatrimonialPage() {
         {movements.map(movement => <tr key={movement.id}><td>{new Date(movement.createdAt).toLocaleString('pt-BR')}</td><td>{({ INITIAL: 'Saldo inicial', ENTRY: 'Entrada', EXIT: 'Baixa', ADJUSTMENT: 'Ajuste', TRANSFER_OUT: 'Transferência - saída', TRANSFER_IN: 'Transferência - entrada', IMPORT_SET: 'Ajuste por importação' } as Record<Movement['type'], string>)[movement.type]}</td><td>{movement.quantity}</td><td>{movement.quantityBefore}</td><td>{movement.quantityAfter}</td><td>{movement.notes || '-'}</td></tr>)}
         {!movements.length && <tr><td colSpan={6}><div className="empty-state">Nenhuma movimentação registrada.</div></td></tr>}
       </tbody></table></div>}
+      <div className="stock-pagination"><button type="button" className="secondary" disabled={loadingHistory || historyPage === 1} onClick={() => void openHistory(historyItem, historyPage - 1)}>Anterior</button><span>{historyTotal} movimentos · Página {historyPage}</span><button type="button" className="secondary" disabled={loadingHistory || historyPage * 50 >= historyTotal} onClick={() => void openHistory(historyItem, historyPage + 1)}>Próxima</button></div>
     </div></div>}
   </>;
 }

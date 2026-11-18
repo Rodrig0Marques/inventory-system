@@ -3,8 +3,8 @@ import { NonPatrimonialMovementType, PermissionCode, Prisma } from '@prisma/clie
 import { z } from 'zod';
 import { prisma } from '../../plugins/prisma.js';
 import { audit } from '../../utils/audit.js';
-import { fail, poolScope, writablePool } from '../../utils/access.js';
-import { serial } from '../../utils/transaction.js';
+import { fail, poolScope, writablePool, descendants } from '../../utils/access.js';
+import { operation, serial } from '../../utils/transaction.js';
 import { nextNonPatrimonialCode } from './service.js';
 
 const optionalText = z.string().trim().max(4000).optional().nullable();
@@ -46,12 +46,14 @@ export async function nonPatrimonialRoutes(app: FastifyInstance) {
       search: z.string().trim().max(200).optional(),
       poolId: z.string().optional(),
       categoryId: z.string().optional(),
+      includeDescendants: z.enum(['true', 'false']).default('true'),
       active: z.enum(['true', 'false', 'all']).default('true'),
     }).parse(request.query);
 
+    const categoryIds = query.categoryId && query.includeDescendants === 'true' ? descendants(await prisma.category.findMany({ select: { id: true, parentId: true } }), query.categoryId) : undefined;
     const where: Prisma.NonPatrimonialItemWhereInput = {
       ...poolScope(request, query.poolId),
-      ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+      ...(query.categoryId ? { categoryId: categoryIds ? { in: categoryIds } : query.categoryId } : {}),
       ...(query.active === 'all' ? {} : { active: query.active === 'true' }),
       ...(query.search ? {
         OR: [
@@ -79,18 +81,20 @@ export async function nonPatrimonialRoutes(app: FastifyInstance) {
 
   app.get('/:id/movements', async request => {
     const { id } = idSchema.parse(request.params);
+    const { page, pageSize } = z.object({ page: z.coerce.number().int().positive().default(1), pageSize: z.coerce.number().int().min(1).max(100).default(50) }).parse(request.query);
     await requireItem(request, id);
-    return prisma.nonPatrimonialMovement.findMany({
+    const [items, total] = await prisma.$transaction([prisma.nonPatrimonialMovement.findMany({
       where: { itemId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * pageSize, take: pageSize,
+    }), prisma.nonPatrimonialMovement.count({ where: { itemId: id } })]);
+    return { items, total, page, pageSize };
   });
 
   app.post('/', { preHandler: app.requirePermission(PermissionCode.NON_PATRIMONIAL_CREATE) }, async (request, reply) => {
-    const data = createSchema.parse(request.body);
-    const result = await serial(async tx => {
-      await writablePool(request, data.poolId, tx);
+    const { requestId, ...data } = createSchema.extend({ requestId: z.string().uuid() }).parse(request.body);
+    const result = await operation(request, requestId, 'CREATE_NON_PATRIMONIAL', data,
+      async tx => { await writablePool(request, data.poolId, tx); }, async tx => {
       await requireCategory(tx, data.categoryId);
       const internalCode = await nextNonPatrimonialCode(tx);
       const item = await tx.nonPatrimonialItem.create({ data: { ...data, internalCode }, include: itemInclude });
@@ -128,12 +132,16 @@ export async function nonPatrimonialRoutes(app: FastifyInstance) {
   app.post('/:id/stock', { preHandler: app.requirePermission(PermissionCode.NON_PATRIMONIAL_MOVE) }, async request => {
     const { id } = idSchema.parse(request.params);
     const body = z.object({
+      requestId: z.string().uuid(),
       type: z.enum(['ENTRY', 'EXIT', 'ADJUSTMENT']),
       quantity: z.coerce.number().int().min(0).max(1_000_000),
       notes: z.string().trim().min(3).max(2000),
     }).parse(request.body);
 
-    return serial(async tx => {
+    return operation(request, body.requestId, 'NON_PATRIMONIAL_STOCK', { id, ...body }, async tx => {
+      const item = await requireItem(request, id, tx);
+      await writablePool(request, item.poolId, tx);
+    }, async tx => {
       const before = await requireItem(request, id, tx);
       await writablePool(request, before.poolId, tx);
       if (!before.active) fail(409, 'Reative o item antes de movimentar o saldo.');
@@ -177,12 +185,19 @@ export async function nonPatrimonialRoutes(app: FastifyInstance) {
   app.post('/:id/transfer', { preHandler: app.requirePermission(PermissionCode.NON_PATRIMONIAL_MOVE) }, async request => {
     const { id } = idSchema.parse(request.params);
     const body = z.object({
+      requestId: z.string().uuid(),
       toPoolId: z.string().min(1),
+      toLocation: optionalText,
+      toResponsible: optionalText,
       quantity: z.coerce.number().int().min(1).max(1_000_000),
       notes: z.string().trim().min(3).max(2000),
     }).parse(request.body);
 
-    return serial(async tx => {
+    return operation(request, body.requestId, 'TRANSFER_NON_PATRIMONIAL', { id, ...body }, async tx => {
+      const source = await requireItem(request, id, tx);
+      await writablePool(request, source.poolId, tx);
+      await writablePool(request, body.toPoolId, tx);
+    }, async tx => {
       const source = await requireItem(request, id, tx);
       await writablePool(request, source.poolId, tx);
       await writablePool(request, body.toPoolId, tx);
@@ -211,8 +226,8 @@ export async function nonPatrimonialRoutes(app: FastifyInstance) {
           manufacturer: source.manufacturer,
           model: source.model,
           quantity: body.quantity,
-          location: source.location,
-          responsible: source.responsible,
+          location: body.toLocation ?? null,
+          responsible: body.toResponsible ?? null,
           poolId: body.toPoolId,
           categoryId: source.categoryId,
         } });
@@ -232,7 +247,7 @@ export async function nonPatrimonialRoutes(app: FastifyInstance) {
       ] });
 
       await audit(request, 'TRANSFER', 'NonPatrimonialItem', source.id, { poolId: source.poolId, quantity: source.quantity }, {
-        toPoolId: body.toPoolId, quantity: body.quantity, sourceAfter, destinationItemId: destination.id,
+        toPoolId: body.toPoolId, quantity: body.quantity, sourceAfter, destinationItemId: destination.id, destinationLocation: destination.location, destinationResponsible: destination.responsible,
       }, tx);
 
       return {

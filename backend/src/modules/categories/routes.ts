@@ -8,14 +8,21 @@ import { descendants, poolScope } from '../../utils/access.js';
 export async function categoryRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
 
-  app.get('/', async (request) => prisma.category.findMany({
+  app.get('/', async (request) => {
+    const categories = await prisma.category.findMany({
     include: {
       assetTypes: true,
       customFields: true,
-      _count: { select: { assets: { where: poolScope(request) }, nonPatrimonialItems: { where: { ...poolScope(request), active: true } } } },
+      _count: { select: { assets: { where: { ...poolScope(request), archivedAt: null } }, nonPatrimonialItems: { where: { ...poolScope(request), active: true } } } },
     },
     orderBy: { name: 'asc' },
-  }));
+    });
+    return categories.map(category => {
+      const ids = new Set(descendants(categories, category.id));
+      const children = categories.filter(item => ids.has(item.id));
+      return { ...category, assetTotal: children.reduce((sum, item) => sum + item._count.assets, 0), nonPatrimonialTotal: children.reduce((sum, item) => sum + item._count.nonPatrimonialItems, 0) };
+    });
+  });
 
   app.post('/', { preHandler: app.requirePermission(PermissionCode.CATEGORY_CREATE) }, async (request, reply) => {
     const data = z.object({
@@ -76,7 +83,7 @@ export async function categoryRoutes(app: FastifyInstance) {
     if (!category) return reply.status(404).send({ message: 'Categoria não encontrada' });
     if (category._count.assets > 0) {
       return reply.status(409).send({
-        message: `Não é possível excluir esta categoria: existem ${category._count.assets} ativo(s) vinculado(s). Altere ou exclua os ativos primeiro.`,
+        message: `Não é possível excluir esta categoria: existem ${category._count.assets} ativo(s), incluindo arquivados, vinculado(s). Reclassifique os ativos para preservar seu histórico.`,
       });
     }
 
@@ -102,6 +109,8 @@ export async function categoryRoutes(app: FastifyInstance) {
       type: z.nativeEnum(CustomFieldType),
       required: z.boolean().optional(),
       options: z.array(z.string()).optional(),
+    }).superRefine((field, context) => {
+      if (field.type === 'SELECT' && (!field.options?.length || field.options.some(value => !value.trim()) || new Set(field.options).size !== field.options.length)) context.addIssue({ code: 'custom', message: 'Campos de seleção precisam de opções não vazias e sem repetições.' });
     }).parse(request.body);
     const result = await prisma.customField.create({ data: { ...data, categoryId: id } });
     await audit(request, 'CREATE', 'CustomField', result.id, undefined, result);
